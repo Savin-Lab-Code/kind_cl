@@ -7,6 +7,100 @@ import pickle
 import io
 import configparser
 import ast
+import json
+
+
+def getfnames(num, s_idx, tphase, idx, dbase='/scratch/dh148/dynamics/results/rnn/ac/20231003/',
+              reg_idx=0, block='mixed', epoch='wait'):
+    """
+    gives filenames for important RNN files
+    @param num: (int) RNN number
+    @param s_idx: (int) curriculum type. 0 = full_cl, 1 = nok_cl, 2 = nok_nocl. others below
+    @param tphase: (int) stage of training. 6=freeze, 5=block, 4=catch, 3=nocatch, 2=pred, 1=hard , 0=simple
+    @param idx: (int) phase withint training stage. typically 0-10 for nocatch-block, but nok_cl and nok_cl go higher
+    @param dbase: (str) base directory for results.
+    @param reg_idx: (int) RNN region (0=ofc, 1 = str). used for KE min filename and flowfield filename
+    @param block: (str) block type (mixed, high, low). used for KE min filename and flowfield filename
+    @param epoch: (str) part of tril ('wait','start','iti'). used for KE min filename and flowfield filename
+    @return:
+    """
+
+    subdirlist = ['full_cl/', 'nok_cl/', 'nok_nocl/', 'pkind_mem/', 'pkind_count/', 'pkind_int/', 'pkind_pred/']
+
+    # important directories
+    datadir_dat = dbase + subdirlist[s_idx]  # primary subdirecotry for that curric type
+    savedir_KE = dbase + subdirlist[s_idx] + 'dynamics/KEmin_constrained/'  # for kinetic energy min file
+    savedir_flows = dbase + subdirlist[s_idx] + 'dynamics/flows/'  # where flow field .mat files stored
+    savedir_stats = dbase + subdirlist[s_idx] + str(num) + '/'  # for stats based on simulation of 10k trials
+
+    # lambda functions for each type of training
+    fgen = lambda NUM, IDX, BASE, SESS, S_IDX: datadir_dat + str(NUM) + '/' + BASE + str(
+        num) + '_' + SESS + '_' + str(IDX)
+
+    fname_funs = [
+        lambda NUM, IDX, S_IDX: datadir_dat + str(NUM) + '/' + 'rnn_kindergarten_' + str(NUM) + '_simple',
+        lambda NUM, IDX, S_IDX: datadir_dat + str(NUM) + '/' + 'rnn_kindergarten_' + str(NUM) + '_int_0_' + str(
+            IDX),
+        lambda NUM, IDX, S_IDX: datadir_dat + str(NUM) + '/' + 'rnn_pred_' + str(NUM) + '_pred_' + str(idx),
+        lambda NUM, IDX, S_IDX: fgen(NUM, IDX, 'rnn_curric_', 'nocatch', S_IDX),
+        lambda NUM, IDX, S_IDX: fgen(NUM, IDX, 'rnn_curric_', 'catch', S_IDX),
+        lambda NUM, IDX, S_IDX: fgen(NUM, IDX, 'rnn_curric_', 'block', S_IDX),
+        lambda NUM, IDX, S_IDX: fgen(NUM, IDX, 'rnn_curric_', 'block', S_IDX) + '_freeze'
+        ]
+
+    # important filenames. model file, original training data, simulated actiivty, stats file , parent beh
+
+    # model file
+    modelname = fname_funs[tphase](num, idx, s_idx) + '.model'
+
+    # behavioral and network activity parent file
+    if s_idx < 2:  # full_cl and nok_cl used 10k trials. nok_nocl and partial use 1k
+        fname_behdat_fun = datadir_dat + 'rnn_' + str(num) + '_allbeh.json'
+    else:
+        fname_behdat_fun = datadir_dat + 'rnn_' + str(num) + '_allbeh_1k.json'
+
+    # stats file saved during that stage of training
+    if s_idx < 2:
+        statsname = savedir_stats + modelname.split('/')[-1].split('.')[0] + '.stats'
+    else:  # used 1k
+        statsname = savedir_stats + modelname.split('/')[-1].split('.')[0] + '_1k.stats'
+
+
+    # neural activity data
+    savename = modelname.split('.')[0] + '_1k.json'
+
+    # dynamics
+    base_ke = modelname.split('/')[-1].split('.')[0]
+    kemin_name = savedir_KE + 'kemin_' + base_ke + 'reg_' + str(reg_idx) + '_' + block + '_' + epoch + '.dat'
+    flowname = savedir_flows + 'flowfields' + base_ke + 'reg_' + str(reg_idx) + '_' + block + '_' + epoch + '.mat'
+    flowname_boutique = flowname.split('.mat')[0]+'_boutique.mat'  # uses custom PC lims based on KEmin
+
+    d = {'model': modelname, 'stats': statsname, 'allbeh': fname_behdat_fun, 'dat': savename,
+         'ke': kemin_name, 'flow': flowname, 'flow_boutique': flowname_boutique}
+
+    return d
+
+
+def retrieve_behdat(fname_behdat, fname):
+    """ helper code to lookup the dat in the behavioral data containing training data
+    for entire RNN.
+    if fname_behda is a list, just search it (for faster lookup)
+    if a filename, load the file."""
+
+    fname_base = fname.split('/')[-1]
+    dat = None
+
+    if type(fname_behdat) is list:  # easier to recylce
+        datlist = fname_behdat
+    else:
+        datlist = json.load(open(fname_behdat, 'r'))
+
+    for j in datlist:
+        if j['name'] == fname_base:
+            dat = j
+            break
+
+    return dat
 
 
 def opsbase():

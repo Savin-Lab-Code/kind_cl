@@ -25,7 +25,8 @@ def getfnames(num, s_idx, tphase, idx, dbase='/scratch/dh148/dynamics/results/rn
     @return:
     """
 
-    subdirlist = ['full_cl/', 'nok_cl/', 'nok_nocl/', 'pkind_mem/', 'pkind_count/', 'pkind_int/', 'pkind_pred/']
+    subdirlist = ['full_cl/', 'nok_cl/', 'nok_nocl/', 'pkind_mem/', 'pkind_count/', 'pkind_int/', 'pkind_pred/',
+                  'sham_wkind/', 'sham_wokind/']
 
     # important directories
     datadir_dat = dbase + subdirlist[s_idx]  # primary subdirecotry for that curric type
@@ -54,20 +55,17 @@ def getfnames(num, s_idx, tphase, idx, dbase='/scratch/dh148/dynamics/results/rn
     modelname = fname_funs[tphase](num, idx, s_idx) + '.model'
 
     # behavioral and network activity parent file
-    if s_idx < 2:  # full_cl and nok_cl used 10k trials. nok_nocl and partial use 1k
+    if s_idx < 2:  # full_cl and nok_cl used 10k trials. nok_nocl and partial use 1k from frozen network
+        # aggregated behavioral data file
         fname_behdat_fun = datadir_dat + 'rnn_' + str(num) + '_allbeh.json'
+        # stats file saved during that stage of training
+        statsname = savedir_stats + modelname.split('/')[-1].split('.')[0] + '.stats'
+        # neural activity data. also 'name' handle in bulk behavioral file
+        savename = modelname.split('.')[0] + '.json'
     else:
         fname_behdat_fun = datadir_dat + 'rnn_' + str(num) + '_allbeh_1k.json'
-
-    # stats file saved during that stage of training
-    if s_idx < 2:
-        statsname = savedir_stats + modelname.split('/')[-1].split('.')[0] + '.stats'
-    else:  # used 1k
         statsname = savedir_stats + modelname.split('/')[-1].split('.')[0] + '_1k.stats'
-
-
-    # neural activity data
-    savename = modelname.split('.')[0] + '_1k.json'
+        savename = modelname.split('.')[0] + '_1k.json'
 
     # dynamics
     base_ke = modelname.split('/')[-1].split('.')[0]

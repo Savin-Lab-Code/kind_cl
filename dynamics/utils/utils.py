@@ -62,20 +62,22 @@ def getfnames(num, s_idx, tphase, idx, dbase='/scratch/dh148/dynamics/results/rn
         # stats file saved during that stage of training
         statsname = savedir_stats + modelname.split('/')[-1].split('.')[0] + '.stats'
         # neural activity data. also 'name' handle in bulk behavioral file
-        savename = modelname.split('.')[0] + '.json'
+        savename = modelname.split('.')[0] + '.json' # behavior only
+        savename_1k = modelname.split('.')[0] + '_1k.json'  #the neural activity
     else:
         fname_behdat_fun = datadir_dat + 'rnn_' + str(num) + '_allbeh_1k.json'
         statsname = savedir_stats + modelname.split('/')[-1].split('.')[0] + '_1k.stats'
         savename = modelname.split('.')[0] + '_1k.json'
+        savename_1k = modelname.split('.')[0] + '_1k.json'
 
     # dynamics
     base_ke = modelname.split('/')[-1].split('.')[0]
     kemin_name = savedir_KE + 'kemin_' + base_ke + 'reg_' + str(reg_idx) + '_' + block + '_' + epoch + '.dat'
-    flowname = savedir_flows + 'flowfields' + base_ke + 'reg_' + str(reg_idx) + '_' + block + '_' + epoch + '.mat'
+    flowname = savedir_flows + 'flowfields_' + base_ke + 'reg_' + str(reg_idx) + '_' + block + '_' + epoch + '.mat'
     flowname_boutique = flowname.split('.mat')[0]+'_boutique.mat'  # uses custom PC lims based on KEmin
 
     d = {'model': modelname, 'init':model_init, 'stats': statsname, 'allbeh': fname_behdat_fun, 'dat': savename,
-         'ke': kemin_name, 'flow': flowname, 'flow_boutique': flowname_boutique}
+         'ke': kemin_name, 'flow': flowname, 'flow_boutique': flowname_boutique, 'dat_1k':savename_1k}
 
     return d
 

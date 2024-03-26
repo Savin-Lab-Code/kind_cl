@@ -42,7 +42,7 @@ def getfnames(num, s_idx, tphase, idx, dbase='/scratch/dh148/dynamics/results/rn
         lambda NUM, IDX, S_IDX: datadir_dat + str(NUM) + '/' + 'rnn_kindergarten_' + str(NUM) + '_simple',
         lambda NUM, IDX, S_IDX: datadir_dat + str(NUM) + '/' + 'rnn_kindergarten_' + str(NUM) + '_int_0_' + str(
             IDX),
-        lambda NUM, IDX, S_IDX: datadir_dat + str(NUM) + '/' + 'rnn_pred_' + str(NUM) + '_pred_' + str(idx),
+        lambda NUM, IDX, S_IDX: datadir_dat + str(NUM) + '/' + 'rnn_pred_' + str(NUM) + '_' + str(idx),
         lambda NUM, IDX, S_IDX: fgen(NUM, IDX, 'rnn_curric_', 'nocatch', S_IDX),
         lambda NUM, IDX, S_IDX: fgen(NUM, IDX, 'rnn_curric_', 'catch', S_IDX),
         lambda NUM, IDX, S_IDX: fgen(NUM, IDX, 'rnn_curric_', 'block', S_IDX),
@@ -53,6 +53,7 @@ def getfnames(num, s_idx, tphase, idx, dbase='/scratch/dh148/dynamics/results/rn
 
     # model file
     modelname = fname_funs[tphase](num, idx, s_idx) + '.model'
+    model_init = modelname.split('rnn_')[0]+'rnn_init_'+str(num)+ '.model'
 
     # behavioral and network activity parent file
     if s_idx < 2:  # full_cl and nok_cl used 10k trials. nok_nocl and partial use 1k from frozen network
@@ -73,7 +74,7 @@ def getfnames(num, s_idx, tphase, idx, dbase='/scratch/dh148/dynamics/results/rn
     flowname = savedir_flows + 'flowfields' + base_ke + 'reg_' + str(reg_idx) + '_' + block + '_' + epoch + '.mat'
     flowname_boutique = flowname.split('.mat')[0]+'_boutique.mat'  # uses custom PC lims based on KEmin
 
-    d = {'model': modelname, 'stats': statsname, 'allbeh': fname_behdat_fun, 'dat': savename,
+    d = {'model': modelname, 'init':model_init, 'stats': statsname, 'allbeh': fname_behdat_fun, 'dat': savename,
          'ke': kemin_name, 'flow': flowname, 'flow_boutique': flowname_boutique}
 
     return d

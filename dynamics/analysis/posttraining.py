@@ -37,7 +37,7 @@ def run_suite(modelname, dataname, configname, simops, redo=None):
     redomask = (exists(dataname) and redo['sim']) or not exists(dataname)
     if redomask:
         print('simulating 1k trials')
-        dat = wt_protocols.sim_task(modelname, configname=basedirectory + configname, simtype=simtype, task_seed=num)
+        dat = wt_protocols.sim_task(modelname, configname=configname, simtype=simtype, task_seed=num)
         if t_idx > 2:
             dat_json = parse.dat2json(dat)
         else:

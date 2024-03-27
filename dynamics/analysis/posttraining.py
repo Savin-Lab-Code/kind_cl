@@ -65,7 +65,8 @@ def run_suite(modelname, dataname, configname, simops, redo=None):
 
         for k in typelist:
             KEops = {'reg_idx': reg_idx, 'tphase': t_idx, 'epoch': epoch, 'blocktype': k,
-                     'num_proc': 1, 'constrained': True, 'block_idx': None, 'nonuniform_samp': True, 'verbose': False}
+                     'num_proc': 1, 'constrained': True, 'block_idx': None, 'nonuniform_samp': True,
+                     'verbose': False, 'basedirectory':basedirectory}
             if 'D' in simops.keys():
                 Duse = simops['D']  # either None to use proper dim, or 2
                 if Duse == 2:

@@ -17,6 +17,7 @@ dist/
 *.log
 *.out
 
+
 # Package files
 *.jar
 
@@ -67,5 +68,4 @@ Thumbs.db
 
 /results/
 *.ipynb_checkpoints
-
 

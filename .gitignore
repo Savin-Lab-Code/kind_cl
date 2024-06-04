@@ -47,6 +47,8 @@ Thumbs.db
 *.avi
 *.flv
 *.mov
+
+
 #figure files
 *.eps
 *.png
@@ -65,4 +67,5 @@ Thumbs.db
 
 /results/
 *.ipynb_checkpoints
+
 

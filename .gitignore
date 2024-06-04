@@ -17,6 +17,7 @@ dist/
 *.log
 *.out
 
+
 # Package files
 *.jar
 
@@ -49,6 +50,7 @@ Thumbs.db
 *.mov
 *.wmv
 
+<<<<<<< HEAD
 #figure files
 *.eps
 *.png
@@ -67,3 +69,4 @@ Thumbs.db
 
 /results/
 *.ipynb_checkpoints
+

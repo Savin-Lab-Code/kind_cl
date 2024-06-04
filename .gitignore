@@ -17,7 +17,6 @@ dist/
 *.log
 *.out
 
-
 # Package files
 *.jar
 
@@ -48,9 +47,8 @@ Thumbs.db
 *.avi
 *.flv
 *.mov
-*.wmv
 
-<<<<<<< HEAD
+
 #figure files
 *.eps
 *.png

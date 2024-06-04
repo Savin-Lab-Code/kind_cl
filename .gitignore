@@ -17,6 +17,7 @@ dist/
 *.log
 *.out
 
+
 # Package files
 *.jar
 
@@ -49,6 +50,7 @@ Thumbs.db
 *.mov
 
 
+<<<<<<< HEAD
 #figure files
 *.eps
 *.png

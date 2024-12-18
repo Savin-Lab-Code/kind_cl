@@ -8,6 +8,8 @@ import io
 import configparser
 import ast
 import json
+from dynamics.process.rnn import wt_nets
+from scipy.io import savemat
 
 
 def getfnames(num, s_idx, tphase, idx, dbase='/scratch/dh148/dynamics/results/rnn/ac/20231003/',
@@ -25,12 +27,21 @@ def getfnames(num, s_idx, tphase, idx, dbase='/scratch/dh148/dynamics/results/rn
     @return:
     """
 
-    subdirlist = ['full_cl/', 'nok_cl/', 'nok_nocl/', 'pkind_mem/', 'pkind_count/', 'pkind_int/', 'pkind_pred/',
-                  'sham_wkind/', 'sham_wokind/']
+    subdirlist = ['full_cl/', 'nok_cl/', 'nok_nocl/', 'pkind_mem/', 'pkind_count/',  # 4
+                  'pkind_int/', 'pkind_pred/', 'wkind/', 'wokind/', 'nok_nocl_wreg/',  # 9
+                  'nok_nocl_longsim/', 'pkind2_mem_inf/', 'gen_kind/', 'gen_kind_newreg/',  # 13
+                  'pkind3_mem_inf_count/', 'pkind3_mem_inf_int/', 'gen_kind_lowreg/',  # 16
+                  'onehot/',  # 17
+                  'gen_kind_highreg/', 'genkind_indlosskind/', 'onehot_newreg/',  # 20
+                  'L50/', 'L100/', 'L500/',  # 23
+                  'inferencefirst/', 'shortinference/', 'gru/'  # 26
+                  ]
 
     # important directories
     datadir_dat = dbase + subdirlist[s_idx]  # primary subdirecotry for that curric type
     savedir_KE = dbase + subdirlist[s_idx] + 'dynamics/KEmin_constrained/'  # for kinetic energy min file
+    savedir_KEfull = dbase + subdirlist[s_idx] + 'dynamics/KEmin_constrained/full_dim/'
+    savedir_KE2D = dbase + subdirlist[s_idx] + 'dynamics/KEmin_constrained/2D/'
     savedir_flows = dbase + subdirlist[s_idx] + 'dynamics/flows/'  # where flow field .mat files stored
     savedir_stats = dbase + subdirlist[s_idx] + str(num) + '/'  # for stats based on simulation of 10k trials
 
@@ -51,35 +62,71 @@ def getfnames(num, s_idx, tphase, idx, dbase='/scratch/dh148/dynamics/results/rn
 
     # important filenames. model file, original training data, simulated actiivty, stats file , parent beh
 
+    # important for kindergarten tasks
+    if idx == -1:
+        idx = 'final'
+
     # model file
     modelname = fname_funs[tphase](num, idx, s_idx) + '.model'
-    model_init = modelname.split('rnn_')[0]+'rnn_init_'+str(num)+ '.model'
+    model_init = modelname.split('rnn_')[0]+'rnn_init_'+str(num) + '.model'
 
     # behavioral and network activity parent file
-    if s_idx < 2:  # full_cl and nok_cl used 10k trials. nok_nocl and partial use 1k from frozen network
+    if s_idx != 2:  # full_cl and nok_cl used 10k trials. nok_nocl use 1k from frozen network. partial kind uses all
         # aggregated behavioral data file
         fname_behdat_fun = datadir_dat + 'rnn_' + str(num) + '_allbeh.json'
+        fname_behdat_fun_1k = datadir_dat + 'rnn_' + str(num) + '_allbeh_1k.json'
         # stats file saved during that stage of training
         statsname = savedir_stats + modelname.split('/')[-1].split('.')[0] + '.stats'
         # neural activity data. also 'name' handle in bulk behavioral file
-        savename = modelname.split('.')[0] + '.json' # behavior only
-        savename_1k = modelname.split('.')[0] + '_1k.json'  #the neural activity
+        savename = modelname.split('.')[0] + '.json'  # behavior only
+        savename_1k = modelname.split('.')[0] + '_1k.json'  # the neural activity
     else:
-        fname_behdat_fun = datadir_dat + 'rnn_' + str(num) + '_allbeh_1k.json'
+        fname_behdat_fun = datadir_dat + 'rnn_' + str(num) + '_allbeh_1k.json'  # does not have full data
+        fname_behdat_fun_1k = datadir_dat + 'rnn_' + str(num) + '_allbeh_1k.json'
         statsname = savedir_stats + modelname.split('/')[-1].split('.')[0] + '_1k.stats'
         savename = modelname.split('.')[0] + '_1k.json'
         savename_1k = modelname.split('.')[0] + '_1k.json'
 
     # dynamics
     base_ke = modelname.split('/')[-1].split('.')[0]
-    kemin_name = savedir_KE + 'kemin_' + base_ke + 'reg_' + str(reg_idx) + '_' + block + '_' + epoch + '.dat'
+    kebase = 'kemin_' + base_ke + 'reg_' + str(reg_idx) + '_' + block + '_' + epoch + '.dat'
+    kemin_name = savedir_KE + kebase
+    kemin_name_full = savedir_KEfull + kebase
+    kemin_name_2d = savedir_KE2D + kebase
     flowname = savedir_flows + 'flowfields_' + base_ke + 'reg_' + str(reg_idx) + '_' + block + '_' + epoch + '.mat'
     flowname_boutique = flowname.split('.mat')[0]+'_boutique.mat'  # uses custom PC lims based on KEmin
 
-    d = {'model': modelname, 'init':model_init, 'stats': statsname, 'allbeh': fname_behdat_fun, 'dat': savename,
-         'ke': kemin_name, 'flow': flowname, 'flow_boutique': flowname_boutique, 'dat_1k':savename_1k}
+    d = {'model': modelname, 'init': model_init, 'stats': statsname, 'allbeh': fname_behdat_fun,
+         'allbeh_1k': fname_behdat_fun_1k, 'dat': savename,
+         'ke': kemin_name, 'ke_fulldim': kemin_name_full, 'ke_2D': kemin_name_2d,
+         'flow': flowname, 'flow_boutique': flowname_boutique, 'dat_1k': savename_1k}
 
     return d
+
+
+def loadmodel(fname, ops=None, device=torch.device('cpu'), numhidden=None):
+    """
+    just a simpler way to load a model with one line
+    @param fname: (str) file name to load
+    @param ops: (dict) of simualtion options, as in opsbase()
+    @param device: (torch.device) where simulation runs
+    @param numhidden: (list) of ints for number hidden units in each layer
+    @return:
+    """
+
+    if ops is None:
+        ops = opsbase()
+    if numhidden is None:
+        numhidden = [256, 256]
+
+    nd = wt_nets.netdict[ops['modeltype']]  # dictionary of models and size params
+    netfun = nd['net']
+    netseed = 101
+    net = netfun(din=nd['din'], dout=nd['dout'], num_hiddens=numhidden, seed=netseed, rnntype=ops['rnntype'],
+                 snr=ops['snr_hidden'], dropout=ops['dropout'], rank=ops['rank'])
+    net.load_state_dict(torch.load(fname, map_location=device.type))
+
+    return net
 
 
 def retrieve_behdat(fname_behdat, fname):
@@ -130,6 +177,7 @@ def opsbase():
     ops['iti_random'] = 20  # option for stochstic ITI, uniform from 0 to iti_random. overrides iti_determ
     ops['iti_type'] = 'uniform'  # the type of distribution to pull from. uniform or gaussian currently
     ops['pblock'] = 0.5  # probability of block transition after blocklength trials
+    ops['stagelist_cl'] = ['stage1.cfg']  # list of CL stage config files. Used ONLY in fulltrain_genearl.py
 
     # basic behavior
     ops['trainonly'] = True  # record output on all the sessions (False), or just train, but save at 100k updates(True)
@@ -191,30 +239,37 @@ def opsbase():
     ops['nepoch_kindergarten'] = 10000  # number of training epochs, if optim for set num epochs
     ops['stopargs_int_kindergarten'] = 0.001  # the minimum required value to hit, if optim till hit lower bound
     ops['base_epoch_kind'] = 1000  # how many epochs until a save
+    ops['lambda_supervised_list'] = [10.0, 10.0, 10.0]  # weights. if using loss_12, specify weights for each kind loss
 
     # simple training
     ops['nsteps_simple_kindergarten'] = 20
     ops['nsteps_train_simple_kindergarten'] = 20  # sets size of minibatches in training. default train in one step
+    ops['kind_vals'] = [5, 10, 20, 40, 80]  # the target values for the memory and integration task
+
     # intermediate training
-    ops['nsteps_list_kindergarten'] = [20, 25]  # step size of each trial in supervised loss
-    ops['nsteps_list_int'] = np.random.randint(20, 100, 10)
+    ops['nsteps_list_kindergarten'] = [20, 25]  # step size of each trial in supervised loss. TODO: used?
+    ops['nsteps_list_int'] = np.random.randint(20, 100, 10)  # length subtrials combined w/ int training. 10 trials
     ops['highvartrials_kind'] = False  # use a high variability of trials in intermediate?
     ops['nsteps_train_int'] = np.sum(ops['nsteps_list_int'])
     ops['stoparg_simple'] = 30.0
     ops['stoptype_simple'] = 'converge'
 
     # prediction + kind training.
+    ops['numstates_pred'] = 3  # number of states used in prediction. this matches WT task. 2 and 5 are options
     ops['pred_stoparg'] = 30.0
     ops['pred_stoptype'] = 'converge'
     ops['beta_pred_kindpred'] = 0.5  # weight on prediciton loss DURING KINDERGARTEN only
     ops['beta_supervised_kindpred'] = 10.0  # the weight of kindergarten during training prediction
     ops['lossinds_supervised_kindpred'] = [0, 1, 2]  # which indices of kindergarten to simult. train with prediction
+    ops['lossinds_pred'] = 3  # which index of inference/prediciton input corresponds to target state
     ops['batchsize_pred'] = 20
     ops['ntrials_pred'] = 400  # how many trials per epoch
-    ops['gamma_pred'] = 0.001  # learning rate
+    ops['gamma_pred'] = 0.005  # learning rate
     ops['nepoch_pred'] = 10000  #
     ops['base_epoch_pred'] = 10  # how many epochs until a period model and data save.
     ops['pred_updatefun'] = 'update'
+    ops['blocklength_pred'] = 50  # how long are blocks in the generic inference task
+    ops['lam_pred'] = 2.5  # the mean parameter for exponential distribution of reward delays, but in pred task
 
     # sham delay 2 match task
     ops['kindergarten_d2m'] = False
@@ -266,6 +321,11 @@ def setinputs(v, k, w, r, a, block=0, nt=600, inputcase=1, device=None, snr=None
         noise[0] = np.max([0, noise[0]])  # avoid negative numbers
 
         if k == 0:
+            # entries
+            # [0]: volume offer, log scale
+            # [1]: trial start. 1 = beginning of trial, 0 = middle of trial
+            # [2]: reward on last timestep
+            # [3]: action take on last timestep: 0 = wait, 1 = opt-out, 2 = waitduring ITI
             inputs_nn = torch.tensor([np.log(v), 1.0, r, a], device=device).requires_grad_(False)
             inputs = torch.tensor([np.log(v+noise[0]), 1.0, r+noise[2], a], device=device).requires_grad_(False)
         else:
@@ -289,13 +349,136 @@ def setinputs(v, k, w, r, a, block=0, nt=600, inputcase=1, device=None, snr=None
             inputs_nn = torch.tensor([0.0, 0.0, r, a, s1_sham, s2_sham], device=device).requires_grad_(False)
             inputs = torch.tensor([0.0, 0.0, r+noise[2], a, s1_sham, s2_sham],
                                   device=device).requires_grad_(False)
-
     else:  # default to all constant
         inputs_nn = torch.tensor([np.log(v), k / nt, w], device=device).requires_grad_(False)
         noise = 0*inputs_nn
         inputs = inputs_nn + noise
 
     return inputs, inputs_nn
+
+
+def networkweights2matlab(net, savename):
+    """
+    grabs the network layers from a pytorch network and parses them for matlab
+    @param net:
+    @param savename:
+    @return:
+    """
+    W1 = []
+    W2 = []
+
+    for k, n in net.linear1.named_parameters():
+        # print(k)
+        if k == 'weight':
+            W1 = n.detach().numpy()
+
+    for k, n in net.linear2.named_parameters():
+        # print(k)
+        if k == 'weight':
+            W2 = n.detach().numpy()
+
+    w_pi = W2[0:2, :]
+    w_V = W2[3, :]
+    w_mem = W2[4, :]
+    w_ct = W2[5, :]
+    w_pblock = W1[0:3, :]
+    w_int = W1[-1, :]
+
+    sd = {'w_pi': w_pi, 'w_V': w_V, 'w_mem': w_mem, 'w_ct': w_ct, 'w_pblock': w_pblock, 'w_int': w_int}
+
+    savemat(savename, sd)
+
+    return sd
+
+
+def getoffers_from_OFCinput(inp, inputcase=11):
+    """
+    will get the offers from an OFC input, based on the inputcase. important for one-hot encodings
+    @param inp: (np.array) of size [nt, dim]
+    @param inputcase: (int) code for what kind of inputs were used in setinputs()
+    @return: (np.array) of size [nt,] for scalar offer corresponding to log(V). and (np.array), size nt for start times
+    """
+
+    if inputcase != 17:
+        offers = inp[inp[:, 0] > 0, 0]
+        start_times = np.argwhere(inp[:, 0] > 0)[:, 0]
+    elif inputcase == 17:
+        mask5 = inp[:, 0] > 0
+        mask10 = inp[:, 1] > 0
+        mask20 = inp[:, 2] > 0
+        mask40 = inp[:, 3] > 0
+        mask80 = inp[:, 4] > 0
+
+        startmask = (mask5) | (mask10) | (mask20) | (mask40) | (mask80)
+        start_times = np.argwhere(startmask)[:, 0]
+
+        vvec = np.log(np.array([[5, 10, 20, 40, 80]])).T
+        offers_onehot = inp[startmask, :]
+
+        offers = offers_onehot[:, : 5] @ vvec
+        offers = np.squeeze(offers)
+        print('398 how many')
+        print(len(start_times))
+    else:
+        print('error in inputcase type')
+        offers = None
+        start_times = None
+
+    return offers, start_times
+
+
+def getstart_from_OFCinput(inp, inputcase=11):
+    """
+    like the inverse of setinputs: gets trial start input from a 1-D version of input, given inputcase
+    @param inp: (np.array) size(nt,d) or (1,nt,d) of inputs to OFC. corresponds to setinputs()
+    @param inputcase: (int) which case to consider
+    @return:
+    """
+
+    inpdim = len(inp.shape)
+
+    if inputcase != 17:
+        if inpdim == 1:
+            trial_start = inp[1]
+        elif inpdim == 2:
+            trial_start = inp[:, 1]
+        elif inpdim == 3:
+            trial_start = inp[:, :, 1]
+        else:
+            print('inputdim must be 1 2 or 3 for inputcase !=17')
+            trial_start = None
+    elif inputcase == 17:
+        if inpdim == 1:
+            trial_start = inp[5]
+        elif inpdim == 2:
+            trial_start = inp[:, 5]
+        elif inpdim == 3:
+            trial_start = inp[:, :, 5]
+        else:
+            print('inputdim must be 1 2 or 3 for inputcase 17')
+            trial_start = None
+    else:
+        print('error in trial start')
+        trial_start = None
+
+    return trial_start
+
+
+def getSTRinp_from_OFCinput(inp, inputcase=11):
+    """
+    grabs correct indices for STR input, bsaed on the full input
+    @param inp: (np.array) size(d,)
+    @param inputcase: (int) which case to consider
+    @return: array for striatum input
+    """
+
+    if inputcase == 17:
+        inp_str = inp[:6]
+    else:
+        print('defaulting to inputcase 11 style for str input parsing')
+        inp_str = inp[:2]
+
+    return inp_str
 
 
 # configuration parser
@@ -337,7 +520,7 @@ def parse_configs(fname, uniquedict=None, ops=None):
             elif uniquedict[k] is bool:
                 uniqueops[k] = cfg['args'].getboolean(k)
             elif uniquedict[k] is list or uniquedict[k] is np.ndarray:
-                uniqueops[k] = ast.literal_eval(cfg['args'][k])
+                uniqueops[k] = eval(cfg['args'][k])
             else:
                 uniqueops[k] = cfg['args'][k]
 
@@ -351,13 +534,18 @@ def parse_configs(fname, uniquedict=None, ops=None):
             if len(cfg['args'][key]) > 0 and cfg['args'][key][0] == '[':  # you are a list! treat as a list
                 ops[key] = ast.literal_eval(cfg['args'][key])
             elif type(ops[key]) is int or type(ops[key]) is np.int64:
-                ops[key] = cfg['args'].getint(key)
+                if key == 'nsteps_train_int':
+                    # this one can be a numpy expression
+                    ops[key] = eval(cfg['args'][key])
+                else:
+                    ops[key] = cfg['args'].getint(key)
+
             elif type(ops[key]) is float or type(ops[key]) is np.float64:
                 ops[key] = cfg['args'].getfloat(key)
             elif type(ops[key]) is bool:
                 ops[key] = cfg['args'].getboolean(key)
             elif type(ops[key]) is list or type(ops[key]) is np.ndarray:
-                ops[key] = ast.literal_eval(cfg['args'][key])
+                ops[key] = eval(cfg['args'][key])
             else:
                 ops[key] = cfg['args'][key]
 
@@ -366,6 +554,71 @@ def parse_configs(fname, uniquedict=None, ops=None):
         ops['nn'] = ast.literal_eval(cfg['args']['nn'])
 
     return ops, uniqueops
+
+
+class CL_Task(object):
+    """ simple class that will define a curriculum learning task. includes a loss function and batchsize"""
+    def __init__(self, loss, weight, batchsize, name):
+        self.loss = loss  # function handle to a loss function
+        self.weight = weight  # weight to multiply loss by
+        self.batchsize = batchsize  # batchsize for this task
+        self.name = name  # name of task
+
+
+class CL_Stage(object):
+    """ simple class to create a stage of CL training"""
+    def __init__(self, tasklist, convtype, criteria, learningrate, name, maxepoch=1000, savefreq=0, savelog=False):
+        self.tasklist = tasklist  # (list) of CL_Task objects
+        self.convtype = convtype  # what stopping criteria. 'converge' or 'lowlim'
+        self.criteria = criteria  # numerical criteria for stopping, based on self.convtype
+        self.learningrate = learningrate  # learning rate for that stage
+        self.name = name  # name of cucciruclum state. used for saving
+        self.maxepoch = maxepoch  # maximum number of epochs for the stage
+        self.savefreq = savefreq  # frequency, in epochs, of saving. 0 = no save
+        self.savelog = savelog  # save log files for this stage??
+
+
+def parse_config_CLstage(fname):
+    """
+    loads parameters into a CL_task object
+    :param fname: config file name
+    :return:
+    """
+    cfg = configparser.ConfigParser()
+    cfg.optionxform = lambda option: option  # override default behavior to make keys lc
+    cfg.read(fname)
+
+    argkeys = list(cfg.keys())  # contains DEFAULT, args, and rest of stuff. even if DEFAULT not defined in file
+    nargs = len(argkeys)  # first header is stage info
+
+    convtype = cfg['args']['convtype']  # what stopping criteria. 'converge' or 'lowlim'
+    if convtype == 'converge':
+        criteria = int(cfg['args']['criteria'])  # numerical criteria for stopping, based on self.convtype
+    elif convtype == 'lowlim':
+        criteria = float(cfg['args']['criteria'])
+    else:
+        print('criteria provided is not allowed. must be "converge" or "lowlim"')
+        criteria = None
+
+    learningrate = float(cfg['args']['learningrate'])  # learning rate for that stage
+    name = cfg['args']['name']  # name of cucciruclum state. used for saving
+    maxepoch = int(cfg['args']['maxepoch'])  # maximum number of epochs for the stage
+    savefreq = int(cfg['args']['savefreq'])  # frequency, in epochs, of saving. 0 = no save
+    savelog = cfg['args'].getboolean('savelog')  # save log files for this stage??
+
+    tasklist = []
+    for k in range(2, nargs):
+        key_k = argkeys[k]
+        loss_k = eval(cfg[key_k]['loss'])  # has bad debugging tracing
+        weight_k = float(cfg[key_k]['weight'])
+        batchsize_k = int(cfg[key_k]['batchsize'])
+        name_k = cfg[key_k]['name']
+        task_k = CL_Task(loss_k, weight_k, batchsize_k, name_k)
+        tasklist.append(task_k)
+
+    stage = CL_Stage(tasklist, convtype, criteria, learningrate, name, maxepoch, savefreq, savelog)
+
+    return stage
 
 
 class CPU_Unpickler(pickle.Unpickler):

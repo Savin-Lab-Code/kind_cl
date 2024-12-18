@@ -9,6 +9,7 @@ from dynamics.process.rnn import wt_delay2match as wt_d2m
 from dynamics.utils.utils import opsbase
 import gc
 import json
+from datetime import datetime
 
 
 def savecurric(fname, net, updater, dat, ops, domodel=True, dostats=True, dodat=True,
@@ -64,6 +65,153 @@ def savecurric(fname, net, updater, dat, ops, domodel=True, dostats=True, dodat=
     return output
 
 
+def training_curric_general(net, stagelist, ops=None, savedir=None, device=torch.device('cpu'), optim_fname=''):
+    """
+    a general curriculum training routine to do curriculum of tasks in sequence.
+    @param net: (torch.NN) neural network to optimize
+    @param stagelist: (list) (or nested lists) of CL_Stage objects
+    @param ops: (dict) options for the optimization
+    @param savedir: (str) location for saving, if needed
+    @param device: (torch.device) object for what device trains network. 'cpu' or 'cuda', usually
+    @param optim_fname: (str) name of previous optimizer state, if reloading from an earlier save
+    @return:
+    """
+
+    # set up the basic options
+    if ops is None:
+        ops = opsbase()
+
+    # check that savedir has been set, if needed
+    assert (sum([k.savefreq > 0 for k in stagelist]) > 0) and (savedir is not None), ("savedir must "
+                                                                                      "be set if CL  savefreq > 1")
+
+    seed = ops['seed_kindergarten']
+    np.random.seed(seed)
+
+    nstages = len(stagelist)
+
+    # output list to report at end of entire training
+    losslist = []  # will be a nested list of len nstages
+
+    # begin iterating over each stage
+    for k in range(nstages):
+        clstage = stagelist[k]
+        print('beginning stage ' + str(k))
+
+        # check if savefreq has been set correctly. avoid division errors in mod calc
+        if clstage.savefreq == 0 or clstage.savefreq is None:
+            clstage.savefreq = clstage.maxepoch + 1
+
+        assert type(clstage.tasklist) is list, "tasks in CL_stage objects must be lists. even one task per stage."
+        ntasks_k = len(clstage.tasklist)
+        loss_k = torch.tensor(np.inf)  # initialize at high val
+        loss_best = loss_k
+        converge_ind = 0  # number of epochs since improvement
+
+        # loss and gradients over trainign for individual stage
+        loss_stage = []
+        grad_stage = []
+
+        # set the optimizer. load previous adam state on first task if provided
+        updater = torch.optim.Adam(net.parameters(), lr=stagelist[k].learningrate)
+        if optim_fname != '' and k == 0:
+            print('loading previous adam state')
+            updater.load_state_dict(torch.load(optim_fname, map_location=device.type))
+
+        saveidx = 0  # index for saving, since each stage could have different savefreq
+        for epoch in range(clstage.maxepoch):
+
+            loss_epoch = []
+            outputs_epoch = []
+            for j in range(ntasks_k):
+                task = clstage.tasklist[j]
+
+                # initialize state. detach so not part of grad calc
+                si = net.begin_state(batchsize=task.batchsize, device=device)
+                if isinstance(si[0], tuple):  # multiregion LSTM
+                    [[m.detach() for m in sk] for sk in si]
+                elif isinstance(si, tuple) or isinstance(si, list):  # LSTM or mr RNN
+                    [sk.detach() for sk in si]
+                else:  # vanilla RNN and GRU
+                    si.detach()
+
+                # calc loss
+                loss_j, outputs_j = task.loss(net, ops, si, batchsize=task.batchsize, seed=epoch*(k+1))
+                loss_epoch.append(loss_j*task.weight)
+                outputs_epoch.append(outputs_j)
+
+            # update
+            updater.zero_grad()
+            loss = torch.stack(loss_epoch[:]).sum()
+            loss.backward()
+            updater.step()
+
+            # calc gradient
+            abs_sum = 0
+            for p in net.parameters():
+                # some losses don't use entire network, and will have None gradients
+                if p.grad is not None:
+                    abs_sum += abs(np.sum(p.grad.cpu().numpy()))
+
+            # abs_sum = np.sum([abs(np.sum(k.grad.cpu().numpy())) for k in net.parameters()])
+            grad_stage.append(abs_sum)
+
+            loss_detached = [k.detach().cpu().numpy() for k in loss_epoch]
+            loss_detached.insert(0, loss.detach().cpu().numpy())  # first index is total loss
+            loss_stage.append(loss_detached)
+
+            # print losses
+            if (epoch + 1) % 10 == 0:
+                print(loss_detached, end='\r')
+
+            # decide to save?
+            if (epoch + 1) % clstage.savefreq == 0:
+                print('saving network and adam state')
+
+                savename = savedir + clstage.name + '_'+str(saveidx)
+                torch.save(net.state_dict(), savename + '.model')
+                torch.save(updater.state_dict(), savename + '.adam')
+
+                if clstage.savelog:
+                    print('saving training data, gradient, outputs')
+                    savedict = {'loss': loss_detached, 'grad': abs_sum,
+                                'outputlist': outputs_epoch, 'clstage': clstage.__dict__}
+                    savedat_json = parse.dict2json(savedict)
+                    with open(savename + '.json', 'w') as f:
+                        json.dump(savedat_json, f)
+
+                saveidx += 1
+
+            # do a convergence stopping test
+            if clstage.convtype == 'converge':
+                if loss <= loss_best:
+                    loss_best = loss
+                    converge_ind = 0
+                else:
+                    converge_ind += 1
+
+                if converge_ind > clstage.criteria:
+                    print('stopping stage early. no improvement compared to average of last ' +
+                          str(clstage.criteria) + 'epochs')
+                    savename = savedir + clstage.name + '_final'
+                    torch.save(net.state_dict(), savename + '.model')
+                    torch.save(updater.state_dict(), savename + '.adam')
+                    break
+
+            elif clstage.convtype == 'lowlim':
+                if loss < clstage.criteria:
+                    print('stopping stage  early. hit a lower limit for stopping')
+                    savename = savedir + clstage.name + '_final'
+                    torch.save(net.state_dict(), savename + '.model')
+                    torch.save(updater.state_dict(), savename + '.adam')
+                    break
+
+        # add to losses at end of stage
+        losslist.append(loss_stage)
+
+    return losslist
+
+
 def training_kindergarten(net, ops=None, savename='rnn_kindergarten', device=torch.device('cpu'),
                           savelog=False, optim_fname=''):
     """
@@ -88,7 +236,7 @@ def training_kindergarten(net, ops=None, savename='rnn_kindergarten', device=tor
     nsteps_train_simple = ops['nsteps_train_simple_kindergarten']
     nsteps_int_list = ops['nsteps_list_int']
     nsteps_train_int = ops['nsteps_train_int']
-    gamma = ops['gamma_kindergarten']
+    gamma = ops['gamma_kindergarten']  # TODO: will I need to make a learning-rate schedule for this?
     nepoch = ops['nepoch_kindergarten']
     stopargs_int = ops['stopargs_int_kindergarten']
     stages = ops['stages_kindergarten']
@@ -136,10 +284,9 @@ def training_kindergarten(net, ops=None, savename='rnn_kindergarten', device=tor
 
             # create simple training data
             inputs, targets, _, _ = wt_kindergarten.trainingdata_simple(
-                seed=seed, nsteps=nsteps_simple, batchsize=batchsize, din=din)
+                seed=seed, nsteps=nsteps_simple, batchsize=batchsize, din=din, ops=ops)
 
             si = net.begin_state(batchsize=batchsize, device=device)
-            # [k.detach() for k in si]  # LSTMs have tuples
             # track the state. do it as list comprehension for LSTMS
             if isinstance(si[0], tuple):  # multiregion LSTM
                 [[m.detach() for m in sk] for sk in si]
@@ -167,7 +314,7 @@ def training_kindergarten(net, ops=None, savename='rnn_kindergarten', device=tor
         if savelog:
             savedict = {'ltot_train_list': ltot_train_list, 'gradnorm_list': gradnorm_list, 'outptdict': outptdict}
             savedat_json = parse.dict2json(savedict)
-            with open(savename+'_simple.json', 'w') as f:
+            with open(savename + '_simple.json', 'w') as f:
                 json.dump(savedat_json, f)
 
     # train on intermediate task-------------------------------------
@@ -180,6 +327,8 @@ def training_kindergarten(net, ops=None, savename='rnn_kindergarten', device=tor
             print('loading previous adam state')
             optim_fname = ''
 
+        # change dimensions of trainign data. now timesteps is long, to concatenate trials
+        # must have many trials and blocks to learn about structure
         lossind_list = [lossind_global]  # all of the ones at once
         print('task inds for training:')
         print(lossind_list)
@@ -198,7 +347,7 @@ def training_kindergarten(net, ops=None, savename='rnn_kindergarten', device=tor
             # memory, and integration targets and inputs
             inputs_int, targets_int, _, _ = wt_kindergarten.trainingdata_intermediate(
                 seed=seed + 10, nsteps_list=nsteps_int_list, batchsize=batchsize, din=din,
-                highvartrials=ops['highvartrials_kind'])
+                highvartrials=ops['highvartrials_kind'], ops=ops)
 
             si = net.begin_state(batchsize=batchsize, device=device)
             if isinstance(si[0], tuple):  # multiregion LSTM
@@ -271,9 +420,9 @@ def training_prediction(net, ops, savename='rnn_pred_', device=torch.device('cpu
 
     # decide on which update function to use
     updatefun_name = ops['pred_updatefun']
-    if updatefun_name == 'update':  # loss at all time points
+    if updatefun_name == 'update':
         updatefun = wt_pred.update
-    elif updatefun_name == 'update_trialstart':  # loss only at trial start
+    elif updatefun_name == 'update_trialstart':
         updatefun = wt_pred.update_trialstart
     else:
         updatefun = wt_pred.update
@@ -290,8 +439,36 @@ def training_prediction(net, ops, savename='rnn_pred_', device=torch.device('cpu
     p_optout = 0.3  # optout rate
     pcatch = ops['pcatch']  # original pcatch
     ops['pcatch'] = 0.0  # catch trial rate
-    inputs, targets, _, _, _, _ = wt_pred.trainingdata(ops, seed=seed, ntrials=ntrials_pred, batchsize=batchsize,
-                                                       useblocks=True, p_optout=p_optout)
+
+    # TODO: add general predicion for 2 state
+    if ops['numstates_pred'] == 3:
+        inputs, targets, _, _, _, _ = wt_pred.trainingdata(ops, seed=seed, ntrials=ntrials_pred, batchsize=batchsize,
+                                                           useblocks=True, p_optout=p_optout)
+    elif ops['numstates_pred'] == 5:
+        vdict = {0: [2, 4, 8],
+                 1: [2, 4, 8, 16],
+                 2: [2, 4, 8, 16, 32, 64, 128],
+                 3: [16, 32, 64, 128],
+                 4: [32, 64, 128]}
+        statetrans_fun = wt_pred.transition_5state
+        stateops = {'vdict': vdict, 'statetrans_fun': statetrans_fun}
+
+        inputs, targets, _, _, _, _ = wt_pred.trainingdata_general(ops, seed=seed, ntrials=ntrials_pred,
+                                                                   batchsize=batchsize,
+                                                                   useblocks=True, p_optout=p_optout, stateops=stateops)
+    elif ops['numstates_pred'] == 2:
+        vdict = {0: [2, 4, 8], 1: [8, 16, 32]}
+        statetrans_fun = wt_pred.transition_2state
+        stateops = {'vdict': vdict, 'statetrans_fun': statetrans_fun}
+
+        inputs, targets, _, _, _, _ = wt_pred.trainingdata_general(ops, seed=seed, ntrials=ntrials_pred,
+                                                                   batchsize=batchsize,
+                                                                   useblocks=True, p_optout=p_optout, stateops=stateops)
+    else:
+        print('wrong type of prediction training data specified. check numstates_pred (2,3[wt task], 5)')
+        inputs = None
+        targets = None
+
     print('done with datagen')
     nsteps = inputs.shape[1]  # total number of training steps
 
@@ -470,6 +647,7 @@ def curriculumtraining(net, ops, savename='curric', device=torch.device('cpu'),
 
     # choose cost function(s)
     costfun = wt_costs.name2fun[ops['costtype']]
+
     optimizer = torch.optim.Adam(net.parameters(), lr=ops['alpha'])
     if optim_fname != '':
         print('loading previous adam state')
@@ -495,16 +673,16 @@ def curriculumtraining(net, ops, savename='curric', device=torch.device('cpu'),
 
     for k in range(nrounds_start[0], nrounds[0]):  # train for 1 million, save every 100 k
         print(k)
-
-        # if ((k + 1) % 10 == 0 or k == 0) and savetmp:
-        #  try saving all data and see how it goes
+        print(datetime.now())
         ops['trainonly'] = False
 
         returndict_nocatch = wt_reinforce_cont_new.session_torch_cont(ops, net, optimizer, costfun, device)
+        # save
         fname = savename + '_nocatch_' + str(int((k + 1)))
         savecurric(fname, net, optimizer, returndict_nocatch, ops,
                    domodel=True, dostats=True, dodat=True, deldat=True)
 
+        # delete again
         del returndict_nocatch
         gc.collect()
         if ops['device'] == 'cuda':
@@ -516,12 +694,11 @@ def curriculumtraining(net, ops, savename='curric', device=torch.device('cpu'),
     ops['nocatch_force'] = None  # turns orcing a wait decision off
     ops['pcatch'] = pcatch
     ops['useblocks'] = False
-    # initialize
 
     for k in range(nrounds_start[1], nrounds[1]):
         print(k)
+        print(datetime.now())
 
-        # if ((k + 1) % 10 == 0 or k == 0) and savetmp:
         ops['trainonly'] = False
 
         returndict_catch = wt_reinforce_cont_new.session_torch_cont(ops, net, optimizer, costfun, device)
@@ -531,13 +708,6 @@ def curriculumtraining(net, ops, savename='curric', device=torch.device('cpu'),
         output = savecurric(fname, net, optimizer, returndict_catch, ops,
                             domodel=True, dostats=True, dodat=True, deldat=True, doMAT=False)
 
-        # early stopping?
-        if ops['prog_stop']:
-            linreg = output[0]
-            if linreg['p'] < 0.01 and linreg['m'] > 0:
-                print('p value for wait time slope significant, and slope is positive. stopping')
-                break
-
         # delete again
         del output
         del returndict_catch
@@ -545,6 +715,13 @@ def curriculumtraining(net, ops, savename='curric', device=torch.device('cpu'),
         if ops['device'] == 'cuda':
             print('clearing cuda cache at end of 10k catch session')
             torch.cuda.empty_cache()
+
+        # early stopping?
+        if ops['prog_stop']:
+            linreg = output[0]
+            if linreg['p'] < 0.01 and linreg['m'] > 0:
+                print('p value for wait time slope significant, and slope is positive. stopping')
+                break
 
     # round 3: block structure
     print('round 3: block struture')
@@ -590,10 +767,11 @@ def curriculumtraining(net, ops, savename='curric', device=torch.device('cpu'),
 
         # save
         fname = savename + '_block_' + str(int((k + 1)))
-        _ = savecurric(fname, net, optimizer, returndict_block, ops,
-                       domodel=True, dostats=True, dodat=True, deldat=True, doMAT=True)
+        output = savecurric(fname, net, optimizer, returndict_block, ops,
+                            domodel=True, dostats=True, dodat=True, deldat=True, doMAT=True)
 
         # delete again
+        del output
         del returndict_block
         gc.collect()
         if ops['device'] == 'cuda':
@@ -617,6 +795,16 @@ def curriculumtraining(net, ops, savename='curric', device=torch.device('cpu'),
 
         anneal_ind += 1
 
+        # early stopping?
+        if ops['prog_stop']:
+            wt_dict = output[1]
+            # is there significant adaptaiton for 20 uL?
+            wtmix_ulim = wt_dict['wt_mixed'][2] + 2 * wt_dict['wt_mixed_sem'][2]
+            wtmix_llim = wt_dict['wt_mixed'][2] - 2 * wt_dict['wt_mixed_sem'][2]
+            if wt_dict['wt_high'][2] > wtmix_ulim and wt_dict['wt_low'][2] < wtmix_llim:
+                print('block adaptation for 20uL is signiticant to 2 SEM. stopping')
+                break
+
     gc.collect()
     return net, optim_fname
 
@@ -628,12 +816,14 @@ def sim_task(modelname, configname=None, simtype='task', task_seed=101):
     :param modelname: (str) full path to model to use for simulation
     :param configname: (str) path to .cfg file. make sure trainonly=False, trackstate=True for sim task.
     :param simtype: (str) 'task', 'inf','kind' for different types of simulations
-    :param task_seed: (int) seed to numpy generator for generating trials
+    :param task_seed: (int) seed to rng to set trial offers and such
     :return:
     """
 
     # avoid having exact same trial list for every RNN. let task_seed be their RNN number for unique list
     np.random.seed(task_seed)
+
+    # TODO: set the nsteps list or ns, or etc. as an option
 
     # set basic args args
     if configname is None:
@@ -674,7 +864,8 @@ def sim_task(modelname, configname=None, simtype='task', task_seed=101):
         nsteps = sum(nsteps_list)
         inp, targ, V, rewards = wt_kindergarten.trainingdata_intermediate(seed=101,
                                                                           nsteps_list=nsteps_list,
-                                                                          batchsize=batchsize)
+                                                                          batchsize=batchsize,
+                                                                          ops=ops)
         inputs = torch.Tensor(inp).to(device)
         si = net.begin_state(batchsize=batchsize, device=device)
 
@@ -694,7 +885,7 @@ def sim_task(modelname, configname=None, simtype='task', task_seed=101):
         behdict = {'tdict': tdict, 'preds': preds, 'blocks': blocks, 'offers': offers, 'targs': targ,
                    'outcomes': 0*np.ones(offers.shape).astype(int)}
 
-        rdict = {'behdict': behdict, 'outpt_supervised': outpt_supervised, 'sflat': sflat, 'inp': inp}
+        rdict = {'behdict': behdict, 'outpt_supervised': outpt_supervised, 'sflat': sflat, 'inp': inp, 'ops': ops}
 
     elif simtype == 'inf':
         batchsize = 1
@@ -716,7 +907,7 @@ def sim_task(modelname, configname=None, simtype='task', task_seed=101):
         behdict = {'tdict': tdict, 'preds': preds, 'blocks': blocks, 'offers': offers, 'targs': targ,
                    'outcomes': 0*np.ones(offers.shape).astype(int)}
 
-        rdict = {'behdict': behdict, 'outpt_supervised': outpt, 'sflat': sflat, 'inp': inp}
+        rdict = {'behdict': behdict, 'outpt_supervised': outpt, 'sflat': sflat, 'inp': inp, 'ops': ops}
 
     else:
         print('going to sim other types here. not supported yet')

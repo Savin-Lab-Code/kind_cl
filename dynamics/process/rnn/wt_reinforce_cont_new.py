@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 def simulate_torch_rnn_cont(net, state, env, nstep=100, inputcase=11, device=None, force_action=False,
                             batchsize=1, snr=0.0):
     """
-    simulates across chunks of time, rather than trials. for continous environments. not episodic
+    simulates acros chunks of time, rather than trials. for continous environments. not episodic
     :param net: RNN.module object
     :param state: state of network
     :param env: environment object
@@ -24,6 +24,8 @@ def simulate_torch_rnn_cont(net, state, env, nstep=100, inputcase=11, device=Non
     :param snr: (float, or list) signal to noise ratio for each input
     :return:
     """
+    # doing something weird when trying to make the docustring.
+    # simulates the wait time task as a continuos, not episodic task. simulates over number of states
 
     if device is None:
         device = torch.device('cpu')
@@ -42,7 +44,6 @@ def simulate_torch_rnn_cont(net, state, env, nstep=100, inputcase=11, device=Non
     outputs_sham = []  # outputs for additional, unhelpful tasks
     blocks = []  # blocks at each time step
     entropy = 0  # running tally of entropy
-    isdone = None
 
     if nstep == -1:
         usetrials = True
@@ -51,9 +52,9 @@ def simulate_torch_rnn_cont(net, state, env, nstep=100, inputcase=11, device=Non
     else:
         usetrials = False
         N = None
+    isdone = False
 
-    # iterate over time
-    for k in range(nstep):
+    for k in range(nstep):  # iterate over time
 
         # deal with inputs
         # grab set inputs: volume, timestep, reward rate, reward, action
@@ -146,7 +147,7 @@ def simulate_torch_rnn_cont(net, state, env, nstep=100, inputcase=11, device=Non
               'blocks': blocks, 'noises': noises, 'outputs_supervised': outputs_supervised,
               'outputs_sham': outputs_sham}
 
-    # delete
+    # try removing references
     del states
     del inputs
     gc.collect()
@@ -297,7 +298,7 @@ def session_torch_cont(ops, net, optimizer, costfun, device):
                 if np.sum(~np.isnan(test)) > 0:
                     outputs_sham.append([k.detach().cpu().numpy() for k in outputs['outputs_sham']])
 
-            # calculate gradient
+            # calculate gradient. TODO update: saving gradient as per type
             if not ops['freeze']:
                 grad_k = 0.0
                 for k in net.parameters():
@@ -319,7 +320,9 @@ def session_torch_cont(ops, net, optimizer, costfun, device):
                 theta_all.append(theta)
 
         # clear from memory
+        # TODO is this needed any more?
         _,  gpumem = memcheck(device, clearmem=False)
+        # print(gpumem)
         if gpumem[2] > 10.0:
             print(gpumem)
             print('memory getting large. deleting some stuff')
@@ -354,6 +357,7 @@ def session_torch_cont(ops, net, optimizer, costfun, device):
 
 
 def chkpt(loss, gradient, rewards, wall, rows=1, cols=4, figsize=(10, 3)):
+    # will plot a checkpoint graph
     fig, ax = plt.subplots(rows, cols, figsize=figsize)
     if len(loss[0]) == 2:  # includes policy and value loss
         ax[0].plot([ll[0] for ll in loss], 'k')

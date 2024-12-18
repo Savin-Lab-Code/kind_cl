@@ -1,14 +1,9 @@
 # cost functions for wait time tasks
 # import numpy as np
 import torch
-<<<<<<< HEAD
-from dynamics.process.rnn import wt_kindergarten
-from torch import nn
-=======
 from dynamics.process.rnn import wt_kindergarten, wt_pred
 from torch import nn
 # from torch.distributions.categorical import Categorical
->>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
 import numpy as np
 
 
@@ -82,10 +77,6 @@ def loss_actorcritic_minh_iti(inp, ops):
     # decide what are ITI timesteps. anything with a forced iti action (==2) is considered ITI
     goodt = []
     for k in range(nt_j-1, -1, -1):
-<<<<<<< HEAD
-=======
-        # goodt.append(torch.not_equal(actions[k], 2)) original form
->>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
         if torch.not_equal(actions[k], 2):
             goodt.append(k)
     goodt.reverse()
@@ -93,16 +84,6 @@ def loss_actorcritic_minh_iti(inp, ops):
     loss_policy_good = loss_policy[goodt]
     loss_value_good = loss_value[goodt]
 
-<<<<<<< HEAD
-    return [loss_policy_good.mean(), lambda_value*loss_value_good.mean()], []
-
-
-def loss_kindergarten(inp, ops):
-    """
-    will calculate a supervised loss signal from target signals from kindergarten
-    :param inp: input dictionary. requires net, batchsize, lossinds, nsteps_list, seed
-    :param ops: standard ops dict. requires device
-=======
     # for debugging purposes. keep all time indices and look at outputs
     # loss_policy_tmp = loss_policy[goodt]
     # loss_value_tmp = loss_value[goodt]
@@ -117,7 +98,6 @@ def loss_kindergarten(inp, ops, updatefun=wt_kindergarten.update):
     :param inp: (dict) input dictionary. requires net, batchsize, lossinds, nsteps_list, seed
     :param ops: (dict) standard ops dict. requires device
     :param updatefun: (fun) fun to calculate loss function. use .update_individual for unique weights for each loss
->>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
     :return:
     """
 
@@ -141,10 +121,7 @@ def loss_kindergarten(inp, ops, updatefun=wt_kindergarten.update):
         nsteps_list = [20, 25]
 
     # generate training data
-<<<<<<< HEAD
-=======
     # TODO: this must work with multiregion or make a new method
->>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
     inputs_sup, targets_sup, _, _ = wt_kindergarten.trainingdata_intermediate(
         seed=seed, nsteps_list=nsteps_list, batchsize=batchsize, din=din, ops=ops)
     inputs_supervised = torch.Tensor(inputs_sup).to(device)
@@ -160,13 +137,8 @@ def loss_kindergarten(inp, ops, updatefun=wt_kindergarten.update):
     # [k.detach() for k in si_supervised]
     outputs_supervised, _, _ = wt_kindergarten.batchsamples(net, inputs_supervised, si_supervised, device)
 
-<<<<<<< HEAD
-    # calculate MSE.
-    supervised_loss = wt_kindergarten.update(updater=None, outputs=outputs_supervised,
-=======
     # calculate MSE. will be list if updatefun = wt_kindergarten.update_individual
     supervised_loss = updatefun(updater=None, outputs=outputs_supervised,
->>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
                                              targets=targets_supervised, lossinds=lossinds)
 
     return supervised_loss
@@ -181,11 +153,7 @@ def loss_prediction_prob_block(inp, ops):
     :return:
     """
 
-<<<<<<< HEAD
-    nstep = ops['ctmax']  # unroll width
-=======
     nstep = ops['ctmax']  # unroll width TODO: this is problematic for true episodic RL where ctmax = -1
->>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
 
     # extract last inputs and reshape into a good tensor
     # find where trial start is
@@ -221,11 +189,7 @@ def loss_prediction_prob_block_allt(inp, ops):
     :param ops: standard ops dict. requires device
     :return:
     """
-<<<<<<< HEAD
-=======
 
-    # nstep = ops['ctmax']  # unroll width TODO: this is problematic for true episodic RL where ctmax = -1
->>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
     nstep = len(inp['inputs'])  # number of timepoints
 
     targets = torch.tensor(inp['blocks'], device=ops['device'], dtype=torch.int64)
@@ -243,8 +207,7 @@ def loss_prediction_prob_block_allt(inp, ops):
     return lval, [p_preds, targets]  # keeps same type of output as other main costs, so usable direclty in training
 
 
-<<<<<<< HEAD
-=======
+
 def loss_prediction_general_allt(inp, ops):
     """
     generalized version of loss_prediction_prob_block_allt. doesn't use wt task to set probs,
@@ -323,7 +286,6 @@ def loss_prediction_general_allt(inp, ops):
     return lval, [p_preds, targets]  # keeps same type of output as other main costs, so usable direclty in training
 
 
->>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
 def loss_d2m_allt(inp, ops):
     """
     cross-entropy loss of delay to match task. all time points
@@ -387,13 +349,8 @@ def loss_d2m_end(inp, ops):
 
     else:
         print('this input case is not supported with this loss. check inputcase in ops')
-<<<<<<< HEAD
-        targets = None
-        s2_idx = None
-=======
         s2_idx = np.nan
         targets = None
->>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
 
     if len(s2_idx) > 0:  # for single entries, squeeze is weird. just select indices
         s2_idx = s2_idx[0, :]
@@ -423,13 +380,7 @@ def loss_d2m_end(inp, ops):
 
 def loss_d2m(inp, ops):
     """
-<<<<<<< HEAD
     full cross-entropy loss of current delay to match/non-match. equally weights endpt and waitint
-=======
-
-    full cross-entropy loss of current delay to match/non-match. equally weights endpt and waitint
-
->>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
     :param inp: input dictionary. requires net, batchsize, lossinds, nsteps_list, seed
     :param ops: standard ops dict. requires device
     :return:
@@ -438,11 +389,7 @@ def loss_d2m(inp, ops):
     lval_allt, preds_and_targs = loss_d2m_allt(inp, ops)
     lval_end, _, = loss_d2m_end(inp, ops)
 
-<<<<<<< HEAD
-    # primarily weight getting endpoitn loss correct, but regularize with not being weird in between samples
-=======
     # TODO: decide on the ratio
->>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
     lval = 0.1*lval_allt + 0.9*lval_end
 
     return lval, preds_and_targs
@@ -450,16 +397,9 @@ def loss_d2m(inp, ops):
 
 # combination costs----------------------------------------------------------------------------------
 
-<<<<<<< HEAD
-
-def loss_actorcritic_regularized_9(inp, ops):
-    """
-    primary loss function for multi-region networks. mnih RL loss + kind + ent + all-time block prediction
-=======
 def loss_actorcritic_regularized_9(inp, ops):
     """
     like regularize_7, but all-time block prediction
->>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
     :param inp: input dict. requires rewards, log_probs, v, net, batchsize, lossinds, nsteps_list, seed
     :param ops: standard ops dict. requires gamma, lambda_supvervised, device
     :return:
@@ -522,10 +462,6 @@ def loss_actorcritic_regularized_10(inp, ops):
     return [Lall], [L_policy, L_value, L_kindergarten, L_ent, L_pred, L_d2m]
 
 
-<<<<<<< HEAD
-# simple dictionary to associate name with function
-name2fun = {'loss_actorcritic_minh': loss_actorcritic_minh,
-=======
 def loss_actorcritic_regularized_11(inp, ops):
     """
     like regularize_9, but generic block prediction
@@ -604,7 +540,6 @@ def loss_actorcritic_regularized_12(inp, ops):
 # simple dictionary to associate name with function
 name2fun = {
             'loss_actorcritic_minh': loss_actorcritic_minh,
->>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
             'loss_actorcritic_minh_iti': loss_actorcritic_minh_iti,
             'loss_prediction_prob_block_allt': loss_prediction_prob_block_allt,
             'loss_kindergarten': loss_kindergarten,
@@ -613,11 +548,7 @@ name2fun = {
             'loss_d2m_end': loss_d2m_end,
             'loss_d2m': loss_d2m,
             'loss_actorcritic_regularized_9': loss_actorcritic_regularized_9,
-<<<<<<< HEAD
-            'loss_actorcritic_regularized_10': loss_actorcritic_regularized_10
-=======
             'loss_actorcritic_regularized_10': loss_actorcritic_regularized_10,
             'loss_actorcritic_regularized_11': loss_actorcritic_regularized_11,
             'loss_actorcritic_regularized_12': loss_actorcritic_regularized_12
->>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
             }

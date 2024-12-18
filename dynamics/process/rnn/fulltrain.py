@@ -1,17 +1,11 @@
-<<<<<<< HEAD
-# main run code. takes in a config file, then decides which curriculum stages to use
-=======
 # a redo of the RNN training, from start to finish
->>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
+
 
 import torch
 from dynamics.utils import utils
 from dynamics.process.rnn import wt_protocols, wt_nets
 import sys
-<<<<<<< HEAD
-=======
 from datetime import datetime
->>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
 
 
 def fulltrain_run(fname):
@@ -60,25 +54,17 @@ def fulltrain_run(fname):
 
     # do kindergarten training
     print('deciding on pre-processing steps')
-<<<<<<< HEAD
-    if usekindergarten:
-        print('beginning kindergarten')
-=======
 
     if usekindergarten:
         print('beginning kindergarten')
         print(datetime.now())
->>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
         savename = savedir + 'rnn_kindergarten_' + str(netseed)
         print(savename)
         net, _, _, optim_fname = wt_protocols.training_kindergarten(net, ops=ops, savename=savename, device=device,
                                                                     savelog=True, optim_fname=optim_fname)
     if ops['kindergarten_prediction']:
         print('kindergarten + prediction')
-<<<<<<< HEAD
-=======
         print(datetime.now())
->>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
         savename = savedir + 'rnn_pred_' + str(netseed)
         print(savename)
         net, _, _, optim_fname = wt_protocols.training_prediction(net, ops, savename=savename, device=device,
@@ -93,10 +79,7 @@ def fulltrain_run(fname):
                                                             roundstart=roundstart_pred, optim_fname=optim_fname)
     # do curriculum training
     print('beginning curriculum training')
-<<<<<<< HEAD
-=======
     print(datetime.now())
->>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
     savename = savedir + 'rnn_curric_' + str(netseed)
     print(savename)
     _, _ = wt_protocols.curriculumtraining(net, ops=ops, savename=savename, device=device, savetmp=True,

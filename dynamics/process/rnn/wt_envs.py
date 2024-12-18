@@ -4,11 +4,7 @@ import random
 import dynamics.process.rnn.wt_delay2match as wt_d2m
 
 
-<<<<<<< HEAD
-class wt_env:
-=======
 class wt_env():
->>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
     # the wait time environment that will keep track of trials and output rewards
     def __init__(self, ops):
 
@@ -47,15 +43,6 @@ class wt_env():
                       'auxinps': None}
 
     def step(self, action):
-<<<<<<< HEAD
-        """
-        take a step forward in time
-        @param action: (int) for deciding action taken. 0 = wait, 1 = opt-out, 2 = waitITI
-        @return:
-        """
-=======
-
->>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
         # step forward
         makenewtrial = False
 
@@ -101,14 +88,10 @@ class wt_env():
         np.random.seed(self.n)  # the random block code wasnt random
 
         # make a new trial with some placeholder spots
-<<<<<<< HEAD
-        trial = {'rewards': 0, 'rewprev': prevtrial['rewprev'], 'aprev': prevtrial['aprev']}
-=======
         trial = {}
         trial['rewards'] = 0  # accrued reward on the trial
         trial['rewprev'] = prevtrial['rewprev']
         trial['aprev'] = prevtrial['aprev']
->>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
 
         blocklen = self.ops['blocklen']
         self.n += 1
@@ -229,14 +212,7 @@ class wt_env_wITI(wt_env):
 
 # a class where the reward is given in pieces
 class wt_env_wITI_batchedreward(wt_env_wITI):
-<<<<<<< HEAD
-    """
-    an environment with a variable ITI, but doles reward out in even increments over the ITI
-    """
-
-=======
     # the wait time environment, but includes a variable ITI
->>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
     def __init__(self, ops):
         super().__init__(ops)
 
@@ -318,12 +294,6 @@ class wt_wshamtasks(wt_env_wITI_batchedreward):
         nt = int(ops['tmax_d2m'] / ops['dt'])  # how many timesteps per minibatch of d2m data
         self.ntd2m = nt
         nbatch = int(np.ceil(self.ntall_d2m/self.ntd2m))
-<<<<<<< HEAD
-        # initialize
-        inp = None
-        targ = None
-=======
->>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
         # seed trials by current main task trial
         for j in range(nbatch):
             inpj, targj, _, _, _ = wt_d2m.trainingdata(self.ops, seed=self.n, T=self.ntd2m, batchsize=1)
@@ -347,12 +317,6 @@ class wt_wshamtasks(wt_env_wITI_batchedreward):
         # need to make more sham data? it's a lot to preload
         if self.shamidx == self.ntall_d2m:
             nbatch = int(np.ceil(self.ntall_d2m / self.ntd2m))
-<<<<<<< HEAD
-            # initialize
-            inp = None
-            targ = None
-=======
->>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
             for j in range(nbatch):
                 inpj, targj, _, _, _ = wt_d2m.trainingdata(self.ops, seed=self.n, T=self.ntd2m, batchsize=1)
                 if j == 0:
@@ -369,16 +333,9 @@ class wt_wshamtasks(wt_env_wITI_batchedreward):
         return rew_t
 
 
-<<<<<<< HEAD
-envdict = {'wt_env': wt_env,
-           'wt_env_wITI': wt_env_wITI,
-           'wt_env_wITI_batchedreward': wt_env_wITI_batchedreward,
-           'wt_wshamtasks': wt_wshamtasks}
-=======
 
 envdict = {'wt_env': wt_env,
            'wt_env_wITI': wt_env_wITI,
            'wt_env_wITI_batchedreward': wt_env_wITI_batchedreward,
            'wt_wshamtasks': wt_wshamtasks
            }
->>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)

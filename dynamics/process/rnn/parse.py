@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 # code for structruing beh data for different uses, like behavioral modeling, state analysis, etc.
+=======
+# code for structruing data for different uses, like behavioral modeling, state analysis, etc.
+>>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
 
 import datetime
 import pickle
@@ -6,6 +10,10 @@ import numpy as np
 from scipy.io import savemat
 from dynamics.utils.utils import CPU_Unpickler, opsbase
 from dynamics.process.rnn import wt_envs
+<<<<<<< HEAD
+=======
+import dynamics.utils.utils as utils
+>>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
 import torch
 from os.path import exists
 import gc
@@ -13,12 +21,21 @@ import json
 from sklearn.cluster import DBSCAN as dbscan
 
 
+<<<<<<< HEAD
 def generate_rattrial_rnn(loadname, savename,
                           date_base=str(datetime.date.today())+' ', ops=None, ntrials=None):
     """
     create a .mat file that can be used with the Constantinople lab Matlab codebase
     :param loadname: (str) data file to be loaded .dat or .json type
     :param savename: (str) savename path + preamble.
+=======
+# TODO: should I run that other preprocessing step before this, the one that mimics the rat pipeline?
+def generate_rattrial_rnn(loadname, savename,
+                          date_base=str(datetime.date.today())+' ', ops=None, ntrials=None):
+    """
+    create a .mat file that can be used with the behavioral model
+    :param savename_base: (str) savename path + preamble.
+>>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
     :param date_base: date of simulation. if unknown, use current date
     :param ops: wt_reinforce ops
     :param ntrials: (list) number of trials per session
@@ -30,9 +47,16 @@ def generate_rattrial_rnn(loadname, savename,
     if not exists(loadname):
         print('data does not exist')
 
+<<<<<<< HEAD
     if loadname.split('.')[-1] == 'dat':
         print('loading legacy data')
         with open(loadname, 'rb') as f:
+=======
+    if loadname.split('.')[-1]=='dat':
+        print('loading legacy data')
+        with open(loadname, 'rb') as f:
+            #a = CPU_Unpickler(f).load()
+>>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
             a = pickle.load(f)
     elif loadname.split('.')[-1] == 'json':
         with open(loadname, 'r') as f:
@@ -76,6 +100,10 @@ def generate_rattrial_rnn(loadname, savename,
     prob_catch = pcatch * np.ones(reward.shape)
     wait_time = np.reshape(dt * np.array(a['wt']), (ns, -1)) + dt  # shift everything by dt to be >0
 
+<<<<<<< HEAD
+=======
+    # TODO: get ntrials as input
+>>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
     date[-1, :] = date_base
 
     hits = np.reshape(a['outcomes'], (ns, -1)) == 1
@@ -92,8 +120,13 @@ def generate_rattrial_rnn(loadname, savename,
     rt = np.nan * np.ones(reward.shape)
 
     wait_for_poke = np.nan * np.ones(reward.shape)
+<<<<<<< HEAD
     # optout.astype(float)
 
+=======
+
+    # TODO: if this throws type error, try np.float instead of float
+>>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
     A = {'reward': reward, 'date': date, 'block': block, 'reward_delay': reward_delay, 'prob_catch': prob_catch,
          'wait_time': wait_time, 'ntrials': ntrials, 'hits': hits.astype(bool), 'optout': optout.astype(bool),
          'vios': vios.astype(bool), 'catch': catch.astype(bool),
@@ -106,6 +139,11 @@ def generate_rattrial_rnn(loadname, savename,
     return A
 
 
+<<<<<<< HEAD
+=======
+# loading and parsing scripts
+# TODO: eventually remove this. only have code that loads the .stats file and runs analysis code from that
+>>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
 def load_dat4stats(fname):
     """
     loads .stats data containing regression and wait time information from a training run.
@@ -159,10 +197,19 @@ def get_trialtimes(dat, includestate=True):
     wt = dat['wt']
     ns = len(wt)
     iti = dat['env'].iti[:ns]  # iti for each trial
+<<<<<<< HEAD
+=======
+    inputcase = dat['ops']['inputcase']
+>>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
 
     sflat = []
     inpflat = []
 
+<<<<<<< HEAD
+=======
+    # TODO: handle multiregion inputs. already done I thinj?
+
+>>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
     for k in range(len(inp)):
         inpflat.extend(inp[k])
     if includestate:
@@ -170,6 +217,7 @@ def get_trialtimes(dat, includestate=True):
             sflat.extend(s[k])
 
     # pull important parts. assume that
+<<<<<<< HEAD
     if ismultiregion:
         # for now, assume that offer and reward is present in first unit
         unit = 0
@@ -184,6 +232,24 @@ def get_trialtimes(dat, includestate=True):
     idx_end = idx_start[1:, 0] - 1
     idx_start = idx_start[:-1, 0]
     # idx_end = np.concatenate((idx_end,np.array([len(offers)])),axis = 0)
+=======
+
+    if ismultiregion:
+        # for now, assume that offer and reward is present in first unit
+        unit = 0
+        inpflat_simple = np.array([k[unit][0, 0, :].detach().numpy() for k in inpflat])
+        idx_start = utils.getstart_from_OFCinput(inpflat_simple, inputcase=inputcase)
+        idx_start = np.argwhere(idx_start == 1)[:, 0]
+
+    else:
+        inpflat_simple = np.array([k[0, 0, :].detach().numpy() for k in inpflat])
+        idx_start = utils.getstart_from_OFCinput(inpflat_simple, inputcase=inputcase)
+        idx_start = np.argwhere(idx_start == 1)[:, 0]
+
+    # for a given trial, get start, beginiti, and end times
+    idx_end = idx_start[1:] - 1
+    idx_start = idx_start[:-1]
+>>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
     idx_rew = np.cumsum(np.array(dat['wt']) + iti) - iti  # beginning of iti, when reward hits as input
 
     tdict = {'start': idx_start, 'iti': idx_rew, 'end': idx_end}
@@ -201,7 +267,11 @@ def batchsamples_kind_allstate(net, inputs, si, device=torch.device('cpu')):
     :param device: device
     :return outputs: produced outputs from network
     :return state: hidden state of network
+<<<<<<< HEAD
     :return net: network.
+=======
+    :return net: network. TODO needed?
+>>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
     """
 
     batchsize, nsteps, _ = inputs.shape
@@ -223,6 +293,7 @@ def batchsamples_kind_allstate(net, inputs, si, device=torch.device('cpu')):
         if batchsize > 1:  # a reordering issue for > 1, and a squeeze issues for ==1
             sk = [tuple([torch.unsqueeze(torch.squeeze(mm), dim=0) for mm in m]) for m in sk]
 
+<<<<<<< HEAD
         pred_supervised_k = output_k['pred_supervised']  # supervised output predicitons for kindergarten
         pred_activations_k = output_k['activations']  # prediction activations for block or trial inference
 
@@ -231,6 +302,18 @@ def batchsamples_kind_allstate(net, inputs, si, device=torch.device('cpu')):
 
         outputs2_rs = torch.reshape(pred_activations_k, (batchsize, 1, -1))
         outputs2.append(outputs2_rs.detach().numpy())
+=======
+        # value = output['value']  # value of state
+        pred_supervised_k = output_k['pred_supervised']  # supervised output predicitons for kindergarten
+        pred_activations_k = output_k['activations']  # prediction activations for block or trial inference
+
+        # needed?
+        outputs_rs = torch.reshape(pred_supervised_k, (batchsize, 1, -1))
+        outputs.append(outputs_rs.detach().numpy())  # migh squeeze the t dim later?
+
+        outputs2_rs = torch.reshape(pred_activations_k, (batchsize, 1, -1))
+        outputs2.append(outputs2_rs.detach().numpy())  # migh squeeze the t dim later?
+>>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
 
         states.append(sk)
 
@@ -240,7 +323,11 @@ def batchsamples_kind_allstate(net, inputs, si, device=torch.device('cpu')):
     elif isinstance(si, tuple):  # LSTM
         [[k.detach() for k in m] for m in states]
     else:  # vanilla RNN, GRU
+<<<<<<< HEAD
         _ = [m.detach for m in states]
+=======
+        [m.detach() for m in states]
+>>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
 
     # if batchsize if > 1, resize inputs, outputs, states here
     if batchsize > 1:
@@ -276,6 +363,7 @@ def batchsamples_kind_allstate(net, inputs, si, device=torch.device('cpu')):
 
 
 def joinbeh(fname, fname_global, overwrite=False):
+<<<<<<< HEAD
     """
     creates a behavior-only data file for an entire RNN, over training
     @param fname: (str) potential file to load
@@ -283,6 +371,8 @@ def joinbeh(fname, fname_global, overwrite=False):
     @param overwrite: (bool) should you overwrite data if it exists in fname_global?
     @return:
     """
+=======
+>>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
 
     if exists(fname_global):
         print('loading global data')
@@ -306,7 +396,11 @@ def joinbeh(fname, fname_global, overwrite=False):
             elif fname.split('.')[-1] == 'dat':
                 dat = CPU_Unpickler(open(fname, 'rb')).load()
             else:
+<<<<<<< HEAD
                 print('unsupported data type: ' + fname.split('.')[-1])
+=======
+                print('error in data file name: '+ fname)
+>>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
                 dat = None
 
             if overwrite:  # must pop original file from list
@@ -314,7 +408,11 @@ def joinbeh(fname, fname_global, overwrite=False):
                 fname_short = fname.split('/')[-1]
                 names = [j['name'] for j in alldat_list]
                 indices = [i for i, x in enumerate(names) if x == fname_short]
+<<<<<<< HEAD
                 indices.reverse()  # pop in reverse order
+=======
+                indices.reverse()# pop in reverse order
+>>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
                 for j in indices:
                     alldat_list.pop(j)
         else:
@@ -336,6 +434,10 @@ def joinbeh(fname, fname_global, overwrite=False):
               'reward_delay': [float(m) for m in dat['reward_delay']],
               'rewardrate_pergradstep': [float(m) for m in dat['rewardrate_pergradstep']]}
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
     print('checking/adding to main data')
     if not exists(fname_global):
         # this overwrites the dummy handle [{'name':'name'}] when file does not exist entry
@@ -356,6 +458,53 @@ def joinbeh(fname, fname_global, overwrite=False):
     return None
 
 
+<<<<<<< HEAD
+=======
+def behdat2json(num, datadir):
+    """takes a behavioral .dat file and converts and saves to a .json file. MUCH smaller
+    """
+
+    # TODO: this is a temporary piece of code that might be omitted in later commits
+    fname = datadir + 'rnn_' + str(num) + '_allbeh'
+    print(fname)
+
+    with open(fname + '.dat', 'rb') as f:
+        beh = pickle.load(f)
+
+    # print('converting to json friendly')
+    newbeh = []
+    for k in beh:
+        n = {}
+
+        n['rewvols'] = [int(m) for m in k['rewvols']]
+        n['iscatch'] = [bool(m) for m in k['iscatch']]
+        n['blocks'] = [int(m) for m in k['blocks']]
+        n['outcomes'] = [int(m) for m in k['outcomes']]
+        n['wt'] = [int(m) for m in k['wt']] # look up
+        n['rewards_pertrial'] = [float(m) for m in k['rewards_pertrial']]
+        n['reward_delay'] = [float(m) for m in k['reward_delay']]
+        n['pi_end'] = [float(m) for m in k['pi_end']]
+        n['val_start'] = [float(m) for m in k['val_start']]
+        n['preds_start'] = [[float(r) for r in m] for m in k['preds_start']]
+        n['name'] = k['name']
+
+        # k['reward_delay'] = list(k['reward_delay'])
+
+        newbeh.append(n)
+
+    # print('saving')
+    with open(fname + '.json', 'w') as f:
+        json.dump(newbeh, f)
+
+    # print('cleaning up')
+    del beh
+    del newbeh
+    gc.collect()
+
+    # print('done')
+    return None
+
+>>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
 def rec(d):
     """
     little recursion helper to flatten ragged lists
@@ -384,8 +533,13 @@ def rec(d):
 def dict2json(d):
     """
     converts a dictionary entries into json-friendly format. generic code
+<<<<<<< HEAD
     @param d: dictionary
     @return:
+=======
+    @param d: (dict) of results, likely from simulation
+    @return: (dict) with values that json-friendly for saving
+>>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
     """
 
     for k in d.keys():
@@ -404,7 +558,11 @@ def dict2json(d):
 
     return d
 
+<<<<<<< HEAD
 
+=======
+# check the dat ops struct to try and get the dat2json code to work
+>>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
 def dat2json(dat, save_tdvars=True):
     """
     code to convert a raw .dat file saved via pickle to a json-friendly format.
@@ -417,6 +575,10 @@ def dat2json(dat, save_tdvars=True):
     newdat = {}
     # high-level things
     newdat['tmesh'] = [float(m) for m in dat['tmesh']]
+<<<<<<< HEAD
+=======
+    # newdat['env'] = dat['env'] #TODO: handle this stuff
+>>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
     newdat['state_reset_idx'] = [int(k) for k in dat['state_reset_idx']]
 
     # ops has a few fields that need to be massaged
@@ -458,7 +620,11 @@ def dat2json(dat, save_tdvars=True):
     # timestep-level things: [grad][timestep][dims]
     if save_tdvars:
         # states: ngrad, ntime, nregion, ncell, 1,1, nneur. squeeze out nuiscance ones
+<<<<<<< HEAD
         for k in ['actions', 'values', 'rewards', 'preds', 'outputs_supervised', 'pi']:
+=======
+        for k in ['actions','values', 'rewards', 'preds', 'outputs_supervised', 'pi']:
+>>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
             newdat[k] = np.squeeze(np.array(dat[k])).tolist()
 
         # if trainingonly=True or trackstate = False: this is empty
@@ -467,17 +633,27 @@ def dat2json(dat, save_tdvars=True):
             newdat['states'] = []
         elif type(dat['states'][0][0][0][0]) is torch.Tensor:
             print('old state')
+<<<<<<< HEAD
             newdat['states'] = [[[[p.cpu().detach().numpy().astype(float).tolist() for p in n]for n in m]
                                  for m in k] for k in dat['states']]
             # handle extra dims
+=======
+            newdat['states'] = [[[[p.cpu().detach().numpy().astype(float).tolist() for p in n]for n in m] for m in k] for k in
+                                dat['states']]
+            #handle extra dims
+>>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
             newdat['states'] = np.squeeze(np.squeeze(np.array(newdat['states']))).tolist()
             print('done w old state')
         else:
             newdat['states'] = np.squeeze(np.squeeze(np.array(dat[k])).tolist())
 
         if type(dat['inputs'][0][0]) is list:  # a multi-region network
+<<<<<<< HEAD
             newdat['inputs'] = [[[n.cpu().detach().numpy().astype(float).tolist() for n in m] for m in k] for
                                 k in dat['inputs']]
+=======
+            newdat['inputs'] = [[[n.cpu().detach().numpy().astype(float).tolist() for n in m] for m in k] for k in dat['inputs']]
+>>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
         elif type(dat['inputs'][0][0]) is torch.Tensor:
             newdat['inputs'] = [[m.cpu().detach().numpy().astype(float).tolist() for m in k] for k in dat['inputs']]
             newdat['inputs'] = np.squeeze(np.squeeze(np.array(newdat['inputs']))).tolist()
@@ -512,6 +688,10 @@ def json2dat(d):
     return newd
 
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
 def KEconvert2matlab(fname, dosave=True, eps=3):
     """
     extracts the fixed and slow points from KE minization file, clusters with DBSCAN,
@@ -546,8 +726,13 @@ def KEconvert2matlab(fname, dosave=True, eps=3):
     eps_norm = 0.05
     sdiffnorm = 2 * np.sqrt(KE) * lam / (np.linalg.norm(crds, axis=1))
     mask_slow = sdiffnorm < eps_norm
+<<<<<<< HEAD
 
     mask = mask_fixed | mask_slow
+=======
+    mask = (mask_fixed) | (mask_slow)
+    # potentially get rid of this
+>>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
     mask = np.ones(mask.shape).astype(bool)
 
     crds_masked = crds[mask, :]

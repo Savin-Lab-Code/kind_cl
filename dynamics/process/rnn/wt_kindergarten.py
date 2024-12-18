@@ -5,7 +5,11 @@ import torch
 from torch import nn
 
 
+<<<<<<< HEAD
 # generate training area for kindergarten tasks. supervised learning ones only
+=======
+# the Kindergarten training area. supervised learning to pre-condition an RNN------------
+>>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
 def trainingdata_simple(seed=101, nsteps=20, batchsize=1000, din=4, ops=None):
     """
     training set to i)remember input, ii)integrate time iii) integrate reward signal
@@ -20,7 +24,12 @@ def trainingdata_simple(seed=101, nsteps=20, batchsize=1000, din=4, ops=None):
 
     # volume inputs to remember
     Ract = -0.1  # opt-out penal
+<<<<<<< HEAD
     V = np.random.choice([5, 10, 20, 40, 80], replace=True, size=(batchsize,))
+=======
+    vals = ops['kind_vals']  # the default kindergarten values. can overwrite from default to make more general
+    V = np.random.choice(vals, replace=True, size=(batchsize,))
+>>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
     # "rewards" that should be averaged in a moving window
     rewards = np.random.rand(batchsize, nsteps)
     # make about 10% of the trials have an opt-out instead
@@ -35,11 +44,17 @@ def trainingdata_simple(seed=101, nsteps=20, batchsize=1000, din=4, ops=None):
             din = 4
         elif ops['inputcase'] == 15:
             din = 6
+<<<<<<< HEAD
+=======
+        elif ops['inputcase'] == 17:
+            din = 8
+>>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
     inputs = np.zeros((batchsize, nsteps, din))
     outputs = np.zeros((batchsize, nsteps, 3))
 
     for j in range(batchsize):
         # INPUTS
+<<<<<<< HEAD
         inputs[j, 0, 0] = np.log(V[j])
         inputs[j, 0, 1] = 1  # trial start
         inputs[j, :, 2] = rewards[j, :]  # rewards
@@ -47,6 +62,34 @@ def trainingdata_simple(seed=101, nsteps=20, batchsize=1000, din=4, ops=None):
         inputs[j, :, 3] = 0  # actions. wait until reward,
         if j in oo_idx:  # an opt-out trial
             inputs[j, -1, 3] = 1
+=======
+        if ops['inputcase'] == 17:
+            if V[j] == 5:
+                inputs[j, 0, 0] = 1  # Trial offer #use if statements to add multiple diemensions
+            elif V[j] == 10:
+                inputs[j, 0, 1] = 1
+            elif V[j] == 20:
+                # Shows that the channel for 20 is being used only when the volume reward is 20
+                # print(V[j])
+                # print("The input volume is 20")
+                inputs[j, 0, 2] = 1
+                # Shows that index is one
+                # print(inputs[j,0,2])
+            elif V[j] == 40:
+                inputs[j, 0, 3] = 1
+            elif V[j] == 80:
+                inputs[j, 0, 4] = 1
+        else:
+            inputs[j, 0, 0] = np.log(V[j])
+
+        # adjust final indices based on inputsize
+        inputs[j, 0, din-3] = 1  # trial start
+        inputs[j, :, din-2] = rewards[j, :]  # rewards
+
+        inputs[j, :, din-1] = 0  # actions. wait until reward,
+        if j in oo_idx:  # an opt-out trial
+            inputs[j, -1, din-1] = 1
+>>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
 
         # OUTPUTS
         outputs[j, :, 0] = np.log(V[j])  # recall log volume
@@ -63,14 +106,25 @@ def trainingdata_intermediate(seed=101, nsteps_list=None, batchsize=1000, din=4,
     :param nsteps_list: (list) of number of steps for each "trial". length of list is  number of trials
     :param batchsize: (int) size of minibatch independent samples
     :param din: (int) size of input space
+<<<<<<< HEAD
     :param highvartrials: (bool) generate trials with high variance in trial lengths across the minibatch?
     :param ops: (dict) with details about simulation
+=======
+    :param highvartrials: (bool) use high variance in trial types across the batch?
+    :param ops: (dict) the training ops dictionary
+>>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
     :return:
     """
     if nsteps_list is None:
         nsteps_list = [20, 25]
     np.random.seed(seed)
 
+<<<<<<< HEAD
+=======
+    if ops is None:
+        print('ops struct not defined in intermediate kindergarten. might have incorrect model specs')
+
+>>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
     inputs = []
     outputs = []
     V = []
@@ -80,7 +134,13 @@ def trainingdata_intermediate(seed=101, nsteps_list=None, batchsize=1000, din=4,
     outputs_m = []
 
     n = len(nsteps_list)
+<<<<<<< HEAD
 
+=======
+    # nstep = sum(nsteps_list)
+
+    # TODO: not super effective, but maybe keep
+>>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
     if highvartrials:
         # generate unique sequences for each batch, then clip to smallest sequence to make a proper minibatch
         nsteps_list_all = np.random.randint(20, 100, (n, batchsize))
@@ -105,8 +165,11 @@ def trainingdata_intermediate(seed=101, nsteps_list=None, batchsize=1000, din=4,
             nsteps_list_all_tmp[-1][-1] += tdiff[j]
 
         nsteps_list_all = nsteps_list_all_tmp
+<<<<<<< HEAD
     else:
         nsteps_list_all = None
+=======
+>>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
 
     for k in range(batchsize):
 
@@ -116,10 +179,13 @@ def trainingdata_intermediate(seed=101, nsteps_list=None, batchsize=1000, din=4,
         else:  # for same trials in each minibatch, but scrambled in order
             nsteps_list_m = np.random.choice(nsteps_list, n, replace=False)
 
+<<<<<<< HEAD
         # initialize out of loop
         V_m = None
         rewards_m = None
 
+=======
+>>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
         for m in range(n):  # loop over nsteps. scramble on each batch
             nsteps = nsteps_list_m[m]
             inputs_k, outputs_k, V_k, rewards_k = trainingdata_simple(seed + 100*k + m, nsteps, batchsize=1, din=din,
@@ -160,7 +226,11 @@ def batchsamples(net, inputs, si, device=torch.device('cpu')):
     :param device: device
     :return outputs: produced outputs from network
     :return state: hidden state of network
+<<<<<<< HEAD
     :return net: network
+=======
+    :return net: network. TODO needed?
+>>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
     """
 
     batchsize, nsteps, _ = inputs.shape
@@ -216,8 +286,36 @@ def update(updater, outputs, targets, lossinds=None):
         return lval
 
 
+<<<<<<< HEAD
 def train(net, updater, si, inp, targ, device=torch.device('cpu'), nepoch=100, nsteps=100, lossinds=None,
           stoptype='lowlim', stopargs=0.01, win=3, chkptepoch=0):
+=======
+def update_individual(updater, outputs, targets, lossinds=None):
+    """
+    calculates loss and updates weights via an optimizer, but calculates loss individually.
+    to prevent issues in training, it will not allow an updater
+    :param updater: torch updater, like Adam
+    :param outputs: outputs predicted by network
+    :param targets: target outputs
+    :param lossinds: which indices of output to use to MSE loss
+    :return: loss_np value of loss for that minibatch
+    """
+
+    if lossinds is None:
+        lossinds = [0, 1, 2]
+
+    loss = nn.MSELoss()
+    lval_list = [loss(outputs[:, :, k], targets[:, :, k]) for k in lossinds]
+
+    if updater is not None:  # just use to calculate loss, like for mixed loss funs in other trainings
+        print('update_individual doesnt support direct parameter updating. used for aggregated loss functions')
+    else:  # return the tesor form
+        return lval_list
+
+
+def train(net, updater, si, inp, targ, device=torch.device('cpu'), nepoch=100, nsteps=100, lossinds=None,
+          stoptype='lowlim', stopargs=0.01):
+>>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
     """
     update over multiple epochs. each epoch is a pass over the training data.
     currently designed to update gradient every nsteps=100 steps
@@ -232,8 +330,11 @@ def train(net, updater, si, inp, targ, device=torch.device('cpu'), nepoch=100, n
     :param lossinds: indeices of output to use in loss
     :param stoptype: (str) 'lowlim' for hitting a lower limit of loss, or 'converge' to monitor imporvement over epochs
     :param stopargs: (int) argument to handle each stoptype. 'lowlim': gives stop value, 'converge': num epochs back
+<<<<<<< HEAD
     :param win: (int) kindergarten-specific param for how many trials should be averaged. NOT USED
     :param chkptepoch: (int) frequency, in epochs, to run checkpoint plotting fucntion. 0= no plotting. NOT USED
+=======
+>>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
     :return:
     """
 
@@ -293,6 +394,10 @@ def train(net, updater, si, inp, targ, device=torch.device('cpu'), nepoch=100, n
 
             if loss_av <= loss_best:
                 loss_best = loss_av
+<<<<<<< HEAD
+=======
+                # params_best = net.parameters()
+>>>>>>> 5ef8d19 (updating process methods for codeocean resubmission)
                 checkind = 0
             else:
                 checkind += 1

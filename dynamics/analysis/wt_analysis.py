@@ -1,12 +1,42 @@
-# analysis of wait time behavior
+# monitors loss and basic metrics of an RNN optimizatio
 
+from os.path import exists
+import pickle
 import numpy as np
+import matplotlib.pyplot as plt
 import warnings
 from sklearn.linear_model import LinearRegression
 from scipy.stats import ranksums, wilcoxon
 import statsmodels.api as sm
 from dynamics.analysis import state_analysis as sta
-from dynamics.utils.utils import displ
+from dynamics.utils.utils import CPU_Unpickler, opsbase, mwa, displ
+
+
+# functions that calculate optimal state values and wait times---------------------
+def topt_fun(R, ops):
+    # uses optimal wait time formula to find time beyond which you should opt out
+    pnocatch = (1 - ops['pcatch'])
+    topt = ops['lambda'] * (np.log(R * pnocatch) - np.log(-ops['w'] * ops['lambda']))
+    # allow for possible negative values with large time penalties
+    return np.max([0, topt])
+
+
+def V_pi_t(t, R, ops):
+    # estimated reward earned for offer R, given a policy of waiting until t
+    lam = ops['lambda']
+    tex = lam * (1 - np.exp(-t / lam))
+    Pt = (1 - np.exp(-t / lam))
+    V_nocatch = (1 - ops['pcatch']) * (Pt * R + ops['w'] * tex + ops['Roo'] * np.exp(-t / lam))
+    V_catch = ops['pcatch'] * (t * ops['w'] + ops['Roo'])
+
+    V = V_nocatch + V_catch
+    return V
+
+
+def V_pi_topt(_, R, ops):
+    topt = topt_fun(R, ops)
+    V = V_pi_t(topt, R, ops)
+    return V
 
 
 # the data-driven code----------------------------------------
@@ -23,8 +53,8 @@ def parsesimulation(dat, ops, allreg=True):
 
     warnings.filterwarnings("ignore", message="divide by zero*")
     warnings.filterwarnings("ignore", message="invalid value encountered*")
-    warnings.filterwarnings("ignore", message="Mean of empty slice")
-    warnings.filterwarnings("ignore", message="Degrees of freedom*")
+    warnings.filterwarnings("ignore", message="Mean of empty slice")  # loops over all vols in each block, gives 0 mean
+    warnings.filterwarnings("ignore", message="Degrees of freedom*")  # same, but for std
     warnings.filterwarnings("ignore", message="Creating an ndarray*")
     warnings.filterwarnings("ignore", message="kurtosistest only valid*")
     warnings.filterwarnings("ignore", message="omni_normtest is not valid*")
@@ -35,7 +65,7 @@ def parsesimulation(dat, ops, allreg=True):
 
     outcomes = np.array(dat['outcomes'])
     iscatch = np.array(dat['iscatch'])
-    rewvols = np.log2(np.array(dat['rewvols']))  # LOG-rewarded vol on each trial
+    rewvols = np.array(dat['rewvols'])  # rewarded vol on each trial
     wt_all = np.array(dat['wt'])*ops['dt']  # wait time, s
     blocks = np.array(dat['blocks'])
     if 'w_all' not in dat:
@@ -43,8 +73,7 @@ def parsesimulation(dat, ops, allreg=True):
     else:
         rho_all = -np.nanmean(np.array(dat['w_all']), axis=0) / ops['dt']
 
-    Vvec = np.log2(ops['Vvec'])
-
+    Vvec = ops['Vvec']
     wt_catch = wt_all[iscatch]
     rewvol_catch = rewvols[iscatch]
 
@@ -100,7 +129,10 @@ def parsesimulation(dat, ops, allreg=True):
             displ('high vs. low comparison: not enough data for sign rank', 4, dl)
 
         # get slope, coeff, and R^2 per fit
-        X = np.expand_dims(rewvol_catch, axis=1)
+
+        # do the log-transform of volumes here. no need before this
+        X = np.expand_dims(np.log2(rewvol_catch), axis=1)
+
         reg = LinearRegression().fit(X, wt_catch)
         R2 = reg.score(X, wt_catch)
         slope = reg.coef_
@@ -117,7 +149,7 @@ def parsesimulation(dat, ops, allreg=True):
 
         trange = slope*(np.max(X)-np.min(X))  # wait time range
         try:
-            X_mixed = np.expand_dims(rewvol_catch[mask_block_mixed], axis=1)
+            X_mixed = np.expand_dims(np.log2(rewvol_catch[mask_block_mixed]), axis=1)
             reg_mixed = LinearRegression().fit(X_mixed, wt_catch[mask_block_mixed])
             R2_mixed = reg_mixed.score(X_mixed, wt_catch[mask_block_mixed])
             slope_mixed = reg_mixed.coef_
@@ -131,7 +163,6 @@ def parsesimulation(dat, ops, allreg=True):
             slope_mixed = np.nan
             b_mixed = np.nan
             R2_mixed = np.nan
-            X_mixed = None
 
         try:
             p_mixed = est2.summary2().tables[1]['P>|t|']['x1']
@@ -146,7 +177,7 @@ def parsesimulation(dat, ops, allreg=True):
             p_mixed = np.nan
 
         if allreg:
-            X_high = np.expand_dims(rewvol_catch[mask_block_high], axis=1)
+            X_high = np.expand_dims(np.log2(rewvol_catch[mask_block_high]), axis=1)
             try:
                 reg_high = LinearRegression().fit(X_high, wt_catch[mask_block_high])
                 R2_high = reg_high.score(X_high, wt_catch[mask_block_high])
@@ -168,7 +199,7 @@ def parsesimulation(dat, ops, allreg=True):
             try:
                 p_high = est2.summary2().tables[1]['P>|t|']['x1']
             except KeyError:
-                displ('something wrong with stats model regression for high blocks. making nan', 4, dl)
+                displ('somethign wrong with stats model regression for high blocks. making nan', 4, dl)
                 p_high = np.nan
 
         else:
@@ -179,7 +210,7 @@ def parsesimulation(dat, ops, allreg=True):
             trange_high = None
 
         if allreg:
-            X_low = np.expand_dims(rewvol_catch[mask_block_low], axis=1)
+            X_low = np.expand_dims(np.log2(rewvol_catch[mask_block_low]), axis=1)
             try:
                 reg_low = LinearRegression().fit(X_low, wt_catch[mask_block_low])
                 R2_low = reg_low.score(X_low, wt_catch[mask_block_low])
@@ -230,7 +261,7 @@ def parsesimulation(dat, ops, allreg=True):
             wt_use = wt_catch
             rewvol_use = rewvol_catch
 
-        X = np.expand_dims(rewvol_use, axis=1)
+        X = np.expand_dims(np.log2(rewvol_use), axis=1)
         reg = LinearRegression().fit(X, wt_use)
         R2 = reg.score(X, wt_use)
         slope = reg.coef_
@@ -255,7 +286,217 @@ def parsesimulation(dat, ops, allreg=True):
     return wt_dict, linreg, numdict, rho_all, ops
 
 
-def modelagnostic_test(dat, dt=0.05, useRidge=True, mixedonly=False, usecrossterm=True):
+# TODO: I think the deprecated
+def extractloss(fname):
+    """I am tired of kernels dying because of huge files.
+    this will extract loss and loss_aux from .dat files
+    and put in .loss files"""
+
+    L = {}
+    if exists(fname + '.dat'):
+        dat = CPU_Unpickler(open(fname + '.dat', 'rb')).load()
+        L['loss'] = dat['loss']
+        L['loss_aux'] = dat['loss_aux']
+    return L
+
+
+# TODO I think this deprecated
+def loaddata_loss(datapath, num, nmax=51):
+    """
+    will load in .loss files and concatenate
+    :param datapath:
+    :param num:
+    :param nmax:
+    :return:
+    """
+
+    # list for for saved stuff
+    L_catch = []  # main loss
+    Laux_catch = []  # auxiliary losses
+    L_block = []
+    Laux_block = []
+
+    for k in range(1, nmax):
+        print(k, end='\r')
+        fname = datapath + 'rnn_curric_' + str(num) + '_catch_' + str(k)
+        if exists(fname + '.loss'):
+            dat = pickle.load(open(fname + '.loss', 'rb'))
+            L_catch.append(dat['loss'])
+            Laux_catch.append(dat['loss_aux'])
+
+        fname = datapath + 'rnn_curric_' + str(num) + '_block_' + str(k)
+        if exists(fname + '.loss'):
+            dat = pickle.load(open(fname + '.loss', 'rb'))
+            L_block.append(dat['loss'])
+            Laux_block.append(dat['loss_aux'])
+
+    return L_catch, Laux_catch, L_block, Laux_block
+
+
+def flatten_loss(X, wt):
+    """makes loss into long vector"""
+    trial_idx = np.cumsum(wt)
+    nbatch = len(X)
+    ns = len(X[0])
+    nt = (nbatch - 1) * ns + len(X[-1])
+    X_flat = np.zeros((nt,))
+    ind = 0
+    for j in range(nbatch):
+        X_flat[ind:ind + ns] = np.array(X[j])
+        ind += ns
+
+    return X_flat, trial_idx
+
+
+# TODO: this might be deprecated
+def loaddata_stats(datapath, num, nmax=51):
+    # will load the statistics of all files in a folder and extract the following
+    # loss, reward rate, wt slope, adaptation,
+
+    # list for for saved stuff
+    L_catch = []  # main loss
+    Laux_catch = []  # auxiliary losses
+    rho_catch = []  # reward rate
+    stat_catch = []  # statistics list that has things like wait times and regression data
+
+    L_block = []
+    Laux_block = []
+    rho_block = []
+    stat_block = []
+
+    ops = opsbase()
+    dt = ops['dt']
+
+    for k in range(1, nmax):
+        print(k, end='\r')
+        fname = datapath + 'rnn_curric_' + str(num) + '_catch_' + str(k)
+        if exists(fname + '.stats'):
+            dat_stat = pickle.load(open(fname + '.stats', 'rb'))
+            dat = CPU_Unpickler(open(fname + '.dat', 'rb')).load()
+            L_catch.append(dat['loss'])
+            Laux_catch.append(dat['loss_aux'])
+            rho_catch.append(np.array(dat['rewardrate_pergradstep']) / dt)
+            stat_catch.append(dat_stat)
+
+        fname = datapath + 'rnn_curric_' + str(num) + '_block_' + str(k)
+        if exists(fname + '.stats'):
+            dat_stat = pickle.load(open(fname + '.stats', 'rb'))
+            dat = CPU_Unpickler(open(fname + '.dat', 'rb')).load()
+            L_block.append(dat['loss'])
+            Laux_block.append(dat['loss_aux'])
+            rho_block.append(np.array(dat['rewardrate_pergradstep']) / dt)
+            stat_block.append(dat_stat)
+
+    return L_catch, Laux_catch, rho_catch, stat_catch, L_block, Laux_block, rho_block, stat_block
+
+
+def plotloss_single(Xcatch, Xblock, name='L', win=40, ind=None):
+    """
+     will flatten and plot a given loss type. uses output of loaddat_stats
+    :param Xcatch:
+    :param Xblock:
+    :param name:
+    :param win:
+    :param ind: if ind is supplied, then it is a nested loss function from an auxiliary loss
+    :return:
+    """
+
+    Xcatch_flat = []
+    Xblock_flat = []
+    xticks_catch = []
+    xticks_block = []
+
+    for k in range(len(Xcatch)):
+        if ind is None:
+            Xcatch_flat_k = mwa(np.array(Xcatch[k]).flatten(), win)  # total loss
+
+        else:
+            Xcatch_flat_k = mwa(np.array([m[ind] for m in Xcatch[k]]).flatten(), win)  # auxiliary loss
+        xticks_catch.append(len(Xcatch_flat_k))
+        Xcatch_flat.extend(Xcatch_flat_k)
+
+    for k in range(len(Xblock)):
+        if ind is None:
+            Xblock_flat_k = mwa(np.array(Xblock[k]).flatten(), win)  # total loss
+
+        else:
+            Xblock_flat_k = mwa(np.array([m[ind] for m in Xblock[k]]).flatten(), win)  # auxiliary loss
+        xticks_block.append(len(Xblock_flat_k))
+        Xblock_flat.extend(Xblock_flat_k)
+
+    # plot over all training. add tick marks to show where 10k trials started and ended
+    ns1 = len(Xcatch_flat)
+    ns2 = len(Xblock_flat)
+    print([ns1, ns2])
+    xticks_cumul = np.cumsum(np.array(xticks_catch))
+    xticks_cumul_block = xticks_cumul[-1] + np.cumsum(np.array(xticks_block))
+    ymax = np.max([np.max(Xcatch_flat), np.max(Xblock_flat)]) * 1.3
+    ymin = np.min([np.min(Xcatch_flat), np.min(Xblock_flat)]) * 1.3
+    for k in xticks_cumul:
+        plt.vlines(k, ymin=ymin, ymax=ymax, color='gray')
+    for k in xticks_cumul_block:
+        plt.vlines(k, ymin=ymin, ymax=ymax, color='gray')
+
+    plt.plot(range(ns1), Xcatch_flat, label='catch training')
+    plt.plot(range(ns1, ns1 + ns2), Xblock_flat, label='block training')
+
+    plt.title('moving win average of ' + name + ' (' + str(win) + ' grad steps win)')
+    plt.legend()
+    plt.xlabel('grad steps (smoothed)')
+    plt.ylabel(name)
+
+    plt.show()
+
+    return Xcatch_flat, Xblock_flat
+
+
+# TODO: deprecated
+def plotloss_all(L_catch, Laux_catch, rho_catch, stat_catch, L_block, Laux_block, rho_block, stat_block):
+    """
+    aggregate function that will plot all of the relevatnt things tracked over each chunk of data
+    :param L_catch:
+    :param Laux_catch:
+    :param rho_catch:
+    :param stat_catch:
+    :param L_block:
+    :param Laux_block:
+    :param rho_block:
+    :param stat_block:
+    :return:
+    """
+    ns = 500
+    # L_catch, Laux_catch, rho_catch, stat_catch, L_block, Laux_block, rho_block, stat_block = loaddata_stats(
+    # datapath, nmax = 51)
+
+    # plot specific ones
+    plotloss_single(L_catch, L_block, name='total loss', win=40, ind=None)
+    plotloss_single(Laux_catch, Laux_block, name='policy loss', win=40, ind=0)
+    plotloss_single(Laux_catch, Laux_block, name='value loss', win=40, ind=1)
+    plotloss_single(Laux_catch, Laux_block, name='kind loss', win=40, ind=2)
+    plotloss_single(Laux_catch, Laux_block, name='entropy loss', win=40, ind=3)
+
+    # handle reward rate
+
+    plotloss_single(rho_catch, rho_block, name='reward rate', win=40, ind=None)
+
+    # extract things like slope, intercept, log(p), adaptation
+    pvals_catch = [np.log10(s[1]['p']) * np.ones((ns,)) for s in stat_catch]
+    slopes_catch = [s[1]['m'] * np.ones((ns,)) for s in stat_catch]
+    intercepts_catch = [s[1]['b'] * np.ones((ns,)) for s in stat_catch]
+    pvals_block = [np.log10(s[1]['p_mixed']) * np.ones((ns,)) for s in stat_block]
+    slopes_block = [s[1]['m_mixed'] * np.ones((ns,)) for s in stat_block]
+    intercepts_block = [s[1]['b_mixed'] * np.ones((ns,)) for s in stat_block]
+    adapt_20_ratios_block = [s[0]['wt_low'][2] / s[0]['wt_high'][2] * np.ones((ns,)) for s in stat_block]
+    adapt_20_ratios_catch = np.zeros((len(intercepts_catch),))
+
+    plotloss_single(slopes_catch, slopes_block, name='slope', win=1, ind=None)
+    plotloss_single(pvals_catch, pvals_block, name='log(p)', win=1, ind=None)
+    plotloss_single(intercepts_catch, intercepts_block, name='intercept (s)', win=1, ind=None)
+
+    plotloss_single(adapt_20_ratios_catch, adapt_20_ratios_block, name='wt ratio', win=1, ind=None)
+
+
+def modelagnostic_test(dat, dt=0.05, useRidge=True, mixedonly=False, usecrossterm=True, zscore=False):
     """
     checks if wait time on 20ul trials, conditioned on prev trial, has significant diffs. if so, then model-free
     also does linear regression of trial history on wait time and looks for significant weights
@@ -264,20 +505,28 @@ def modelagnostic_test(dat, dt=0.05, useRidge=True, mixedonly=False, usecrosster
     :param useRidge: (bool) for using Ridge (L2) or Lasso (L1) regularized regression
     :param mixedonly: (bool) use mixed block and catch only (True) for the history regression?
     :param usecrossterm: (bool) use the reward x block cross term (True) or not (False)
+    :param zscore: (bool) should you z-score the wait times for the anlaysis? default is false for back-compatibility
     :return: wait times, regression weights, regression p values
     """
     block = np.array(dat['blocks'])
-    rew = np.array(dat['rewvols'])
+    rew = np.array(dat['rewvols'])  # don't do log volume since only used for masking
     iscatch = np.array(dat['iscatch'])
     prevrew = np.concatenate(([0], rew[:-1]), axis=0)
-    wt = np.array(dat['wt'])
+    wt = np.array(dat['wt'])*dt
 
-    # TODO removed parans. affected?
-    mask_lt = rew == 20 & iscatch & block == 0 & prevrew < 20
-    mask_gt = rew == 20 & iscatch & block == 0 & prevrew > 20
+    """ To assess wait time sensitivity to previous offers, 
+    we focused on 20μL catch trials in mixed blocks only. 
+    We z-scored the wait times of these trials separately."""
+    mask20 = (rew == 20) & (iscatch) & (block == 0)
+    if zscore:
+        wt = (wt-np.nanmean(wt[mask20]))/np.nanstd(wt[mask20])
 
-    wt_lt = wt[mask_lt] * dt
-    wt_gt = wt[mask_gt] * dt
+    mask_lt = (rew == 20) & (iscatch) & (block == 0) & (prevrew < 20)
+    mask_gt = (rew == 20) & (iscatch) & (block == 0) & (prevrew > 20)
+    # mask_norm = (rew == 20) & (iscatch) & (block == 0)
+
+    wt_lt = wt[mask_lt]
+    wt_gt = wt[mask_gt]
 
     # rank sum test, if there are enough samples. chose 5 samples arbitrarily. having 0 is the big issue
     if sum(mask_lt) > 5 and sum(mask_gt) > 5:
@@ -286,6 +535,7 @@ def modelagnostic_test(dat, dt=0.05, useRidge=True, mixedonly=False, usecrosster
         except ValueError:
             print('rank sum test will fail. look like all values are the same (likely timeouts)')
             p = np.nan
+
     else:
         print('skipping rank sum test. not enough samples')
         p = np.nan
@@ -303,13 +553,19 @@ def modelagnostic_test(dat, dt=0.05, useRidge=True, mixedonly=False, usecrosster
         p_sr = np.nan
 
     # linear regression of current wait time on reward offer
-    rewvols = np.log2(np.array(dat['rewvols']))
+
+    rewvols = np.log2(np.array(dat['rewvols']))  # do in log volume
     wt = np.array(dat['wt'])
     if mixedonly:
-        m = iscatch & block == 0
+        m = (iscatch) & (block == 0)
     else:
         m = iscatch
+
+    if zscore:
+        wt = (wt - np.nanmean(wt[m]))/np.nanstd(wt[m])
+
     Y = wt[m]
+
     ns = np.sum(m)
     ntrialback = 6
 
@@ -338,7 +594,7 @@ def modelagnostic_test(dat, dt=0.05, useRidge=True, mixedonly=False, usecrosster
     # regardless of usemixed, you need all blocks here
     m = iscatch
     ns = np.sum(m)
-    Y = wt[m]
+    Y = wt[m]  # zscore boolen handled from above
     block = np.array(dat['blocks'])
     block[block == 0] = 10  # mixed
     block[block == 1] = 20  # high
@@ -350,6 +606,7 @@ def modelagnostic_test(dat, dt=0.05, useRidge=True, mixedonly=False, usecrosster
     Xnew = np.zeros((ns, ntrialback + 3))
     Xnew[:, 0] = rewvols[m]
     for k in range(ntrialback):
+        # pvol_k = np.insert(rewvols[:-(k + 1)], 0, np.zeros((k + 1,)))  # maybe I didnt do it as log-V with block?
         pvol_k = np.insert(rewvols[:-(k + 1)], 0, np.zeros((k + 1,)))  #
         Xnew[:, k + 1] = pvol_k[m]
     Xnew[:, -2] = block[m]

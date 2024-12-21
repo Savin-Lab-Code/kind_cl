@@ -6,7 +6,7 @@ import numpy as np
 from scipy.io import savemat
 from dynamics.utils.utils import CPU_Unpickler, opsbase
 from dynamics.process.rnn import wt_envs
-import dynamics.utils as utils
+import dynamics.utils.utils as utils
 import torch
 from os.path import exists
 import gc
@@ -544,7 +544,11 @@ def json2dat(d):
         if k == 'ops':
             newd[k] = json2dat(d[k])
         if k == 'env':
-            classtype = d[k].pop('classtype')
+            if 'classtype' in d[k]:
+                classtype = d[k].pop('classtype')
+            else:  # an older save file. assume
+                classtype = 'wt_env_wITI_batchedreward'
+
             env = wt_envs.envdict[classtype](ops=newd['ops'])
             env.__dict__.update(d[k])
             newd[k] = env

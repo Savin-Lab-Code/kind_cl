@@ -22,14 +22,15 @@ end
 
 switch typearg
     case 'rat'
-
+        % paths to zenodo data from Mah et al. for rat data
         datapath = '/Users/dhocker/projects/constantinoplelab/published/publisheddata_mah2023/A_Structs_Final/';  
         datapath_0 = '/Users/dhocker/projects/constantinoplelab/published/publisheddata_mah2023/';  
         r = load(strcat(datapath_0,'ratList.mat'));
         ratList = r.ratList;
         titlevec = 'rat';
     case 'rnn'
-        datapath = '/Users/dhocker/projects/dynamics/results/20231003/full_cl/mat/';
+        % path to zenodo data from hocker et al. for rnn data
+        datapath = '/Users/dhocker/projects/kind_cl/data/rnndata_matlab/';
         names = dir(strcat(datapath,'*.mat'));
         ratList = cell(numel(names),1);
         for j = 1:numel(names)

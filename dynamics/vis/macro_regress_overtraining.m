@@ -11,28 +11,15 @@ function [B1, B2,P1, P2,dwt1, dwt2,pcatch1, pcatch2] =...
 %   grp: (int) number of groups
 
 
-
-
 if strcmp(dattype,'rat')
-%{
-    [ratList, ~, ~, ~, ~] = getmypaths('all');
-    %Sdir = strcat([filesep, 'Volumes', filesep, 'server',...
-    %    filesep, 'ProcessedRatData', ...
-    %    filesep, 'A_Structs_Final', filesep]);
-    Sdir = strcat([filesep, 'Volumes', filesep, 'server',...
-        filesep, 'ProcessedRatData', ...
-        filesep, 'A_Structs', filesep]);
-
-    %entries will be (3) block regression coefff: curr rew. t-1, block
-    %              and (1) lin sensitivity coeff: curr rew.
-%}
-
+    % paths to zenodo data from Mah et al. for rat data
     datapath = '/Users/dhocker/projects/constantinoplelab/published/publisheddata_mah2023/A_Structs_Final/';  
     datapath_0 = '/Users/dhocker/projects/constantinoplelab/published/publisheddata_mah2023/';  
     r = load(strcat(datapath_0,'ratList.mat'));
     ratList = r.ratList;
 else
-    datapath = '/Users/dhocker/projects/dynamics/results/20231003/full_cl/mat/';
+    % path to zenodo data from hocker et al. for rnn data
+    datapath = '/Users/dhocker/projects/kind_cl/data/rnndata_matlab/';
     ratList = {'1','2','3','4','5','6','7','8','9',...
                '10','11','12','13','14','15','16','17','18','19','20'};
 

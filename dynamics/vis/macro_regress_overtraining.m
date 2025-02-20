@@ -19,11 +19,14 @@ if strcmp(dattype,'rat')
     ratList = r.ratList;
 else
     % path to zenodo data from hocker et al. for rnn data
-    datapath = '/Users/dhocker/projects/kind_cl/data/rnndata_matlab/';
+    datapath = '/Users/dhocker/projects/kind_cl/data/rnndata_matlab/overtraining/';
+    %ratList = {'1','2','3','4','5','6','7','8','9',...
+    %           '10','11','12','13','14','15','16','17','18','19','20'};
     ratList = {'1','2','3','4','5','6','7','8','9',...
-               '10','11','12','13','14','15','16','17','18','19','20'};
-
-
+               '10','11','12','13','14','15','16','17','18','19','20',...
+               '21','22','23','24','25','26','27','28','29','30',...
+               '31','32','33','34','35','36','37','38','39','40',...
+               '41','42','43','44','45','46','47','48','49','50'};
 
 end
 
@@ -51,7 +54,7 @@ for rr = 1:length(ratList)
     if strcmp(dattype,'rat')
         fname = strcat(['ratTrial_', ratList{rr}, '.mat']);
     else
-        fname = strcat(['rnn_',ratList{rr}, '_',dattype,'_allbeh.mat']);
+        fname = strcat(['rnn_',ratList{rr},'_allbeh.mat']);
         disp(fname)
     end
     
@@ -68,7 +71,7 @@ for rr = 1:length(ratList)
         else
             %A = parse_rnndata4matlab(strcat([datapath,fname]));
             load(strcat([datapath,fname]));
-            disp('rat')
+            A.block = double(A.block);
         end
         A.wait_time(A.wait_time>A.wait_thresh) = nan; %TODO: A 
         A.ITI(A.ITI>prctile(A.ITI,99)) = nan;

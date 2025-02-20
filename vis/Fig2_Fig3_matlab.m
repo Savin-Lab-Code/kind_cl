@@ -60,7 +60,7 @@ disp(nrats)
 
 for j = 1:nrats
     %if strcmp(ratList{j},'C027')
-    if strcmp(ratList{j},'S038')
+    if strcmp(ratList{j},'S028')
         disp('i found you')
         fname = strcat(['ratTrial_', ratList{j}, '.mat']);
         a = load([datadir 'A_Structs_Final' filesep fname]);
@@ -73,6 +73,25 @@ end
 figure(1) 
 clf
 plotblocks_together(A,ratList{idx}, 1, true)
+
+%%
+figure(1) 
+clf
+
+%goodlist = [2,4,16,22,23,26,33,38,42,50,63,66,67,68,73,75,81,102,115,135,144,147,149,155,157,158,182,187,202,220,223,231,232,245,249,257,273]
+
+idx = 155
+
+fname = strcat(['ratTrial_', ratList{idx}, '.mat'])
+a = load([datadir 'A_Structs_Final' filesep fname]);
+A = a.A;
+%plotblocks_together(A,ratList{idx}, 1, true)
+plotblocks_together(A,ratList{idx}, 1, true)
+
+
+
+
+
 
 
 %% Fig 2d: distributions of wait time ratio
@@ -156,8 +175,9 @@ usecausal = true
 
 %% Figure 2f and 3g: regression and WTR progress for rats or RNNs
 
-fig2do = 'rnn'; % Fig. 2f
-% fig2do = 'rnn'; % Fig. 3g
+
+%fig2do = 'rat'; % Fig. 2f
+fig2do = 'rnn'; % Fig. 3g
 
 switch fig2do
     case 'rat'
@@ -198,13 +218,19 @@ buff = 10; %number of sessions for visual indent from first to last sess parts
 tvec2 = nsess/2 + buff:nsess+buff-1;
 
 
+
 subplot(2,1,1)
 hold on
 shadedErrorBar(tvec1,nanmean(wtratio_first), nanstd(wtratio_first)/sqrt(nrat),'lineprops',{'linewidth',1,'color','k'})
 shadedErrorBar(tvec2,nanmean(wtratio_last), nanstd(wtratio_last)/sqrt(nrat),'lineprops',{'linewidth',1,'color','k'})
 plot(tvec1, nanmean(wtratio_first),'linewidth',2, 'color','k')
 plot(tvec2, nanmean(wtratio_last),'linewidth',2, 'color','k')
-xticks([0,10,20,40,50,60])
+
+if strcmp(fig2do,'rat')
+    xticks([0,10,20,40,50,60])
+else
+     xticks([0,25,50,60,85,110])
+end
 xticklabels({'0',num2str(nsess/2),num2str(nsess),num2str(nsess), num2str(nsess/2),'0'})
 title('wt ratio ')
 
@@ -218,7 +244,11 @@ title('block coeff')
 
 
 xlabel('<-- sessions from start                                   --> sessions from end)')
-xticks([0,10,20,40,50,60])
+if strcmp(fig2do,'rat')
+    xticks([0,10,20,40,50,60])
+else
+     xticks([0,25,50,60,85,110])
+end
 xticklabels({'0',num2str(nsess/2),num2str(nsess),num2str(nsess), num2str(nsess/2),'0'})
 
 

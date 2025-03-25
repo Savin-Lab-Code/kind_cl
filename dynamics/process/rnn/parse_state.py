@@ -1,9 +1,9 @@
 import numpy as np
 from scipy import interpolate
 import torch
-
 from sklearn.decomposition import PCA
 from scipy.io import savemat
+import copy
 
 
 # TODO: needed? reusable for states for dynamics
@@ -114,18 +114,21 @@ def postprocess4dynamics(sflat, behdict, warpstate=True, Ttrial=None, zeromean=F
     :param warpstate: (bool) warp the neural activity to standardize trial length?
     :param Ttrial: (int) length of trial in timesteps, if you want to warp. helpful for pca
     :param zeromean: (bool) if true, subtract the mean rate of each neuron, but based on mean during epoch
-    :param epoch: (str) if zeromean is true, subtract the mean based on this epoch: 'wait', 'iti', 'start'
+    :param epoch: (str) if zeromean is true, subtract the mean based on this epoch: 'wait', 'iti', 'start','all'
     :param nlayer: (int) number of layers in the network
     :param ngate: (int) number of gates output for each layer of the network. LSTM=2, GRU and RNN = 1
     :return: flattened state arrays by region and type (cell, hidden), and updated, masked behdict
     """
 
-    offers = behdict['offers']
-    outcomes = behdict['outcomes']
-    blocks = behdict['blocks']
-    tdict = behdict['tdict']
-    task = behdict['task']
-    nstate = (nlayer+1)*(ngate+1)  # how many total states
+    #bd = behdict.copy()
+    bd = dict(behdict)
+
+    offers = bd['offers']
+    outcomes = bd['outcomes']
+    blocks = bd['blocks']
+    tdict = copy.deepcopy(bd['tdict'])
+    task = bd['task']
+    nstate = (nlayer+1)*(ngate+1)  # how many total states. TODO this is wrong. used in warping states
 
     # name ordering convention: all gates for each layer, then iterate to next layer
     sdict = sflat2statedict(sflat, nlayer, ngate)
@@ -170,6 +173,10 @@ def postprocess4dynamics(sflat, behdict, warpstate=True, Ttrial=None, zeromean=F
                 e1 = tdict['start']
                 e2 = tdict['start']+1
 
+            elif epoch == 'all':
+                e1 = tdict['start']
+                e2 = tdict['end']
+
             else:
                 print('wrong epoch type supplied to postprocess4dynamics')
                 e1 = None
@@ -207,18 +214,18 @@ def postprocess4dynamics(sflat, behdict, warpstate=True, Ttrial=None, zeromean=F
         trialstart_idx = np.array(trialstart_idx_warped)
         wt = T * np.ones(trialstart_idx.shape).astype(int)  # move to median value for all wapred
 
-    behdict['offers_masked'] = offers_masked
-    behdict['outcomes_masked'] = outcomes_masked
-    behdict['blocks_masked'] = blocks_masked
-    behdict['trialstart_idx'] = trialstart_idx
-    behdict['T'] = T
-    behdict['wt'] = wt
-    behdict['trials_masked'] = trials_masked
-    behdict['iti'] = iti
-    behdict['outlier_trials'] = np.argwhere(mask)[:, 0]
-    behdict['goodtrial_mask'] = np.argwhere(mask == 0)[:, 0]
+    bd['offers_masked'] = offers_masked
+    bd['outcomes_masked'] = outcomes_masked
+    bd['blocks_masked'] = blocks_masked
+    bd['trialstart_idx'] = trialstart_idx
+    bd['T'] = T
+    bd['wt'] = wt
+    bd['trials_masked'] = trials_masked
+    bd['iti'] = iti
+    bd['outlier_trials'] = np.argwhere(mask == 0)[:, 0]
+    bd['goodtrial_mask'] = np.argwhere(mask)[:, 0]
 
-    return sdict, behdict
+    return sdict, bd
 
 
 def extract_data_epoch(statedict, tdict, isgoodmask, epoch='wait'):
@@ -257,6 +264,9 @@ def extract_data_epoch(statedict, tdict, isgoodmask, epoch='wait'):
         ev_len = T - ev_s
     elif epoch == 'start':
         ev_s = tstart
+        ev_len = np.ones(len(ev_s)).astype(int)
+    elif epoch == 'post_start_wait':  # the first time point after offer information
+        ev_s = tstart + 1
         ev_len = np.ones(len(ev_s)).astype(int)
     elif epoch == 'all':
         # grab all data
@@ -535,6 +545,10 @@ def condpsth_bycelltype(vmask, statedict, behdict, nsamps=0, mask_marginal=None,
     psths = {'ofc_h': psth_ofc_h, 'ofc_c': psth_ofc_c, 'str_h': psth_str_h, 'str_c': psth_str_c,
              'se_ofc_h': se_ofc_h, 'se_ofc_c': se_ofc_c, 'se_str_h': se_str_h, 'se_str_c': se_str_c}
     # TODO: are samps needed anymore? I don't think that code really uses this. it's redundant with dat2fit
+    samps = {'ofc_h': psth_ofc_h_samps, 'ofc_c': psth_ofc_c_samps, 'str_h': psth_str_h_samps, 'str_c': psth_str_c_samps}
+    dat2fit = {'ofc_h': samps2fit_ofc_h, 'ofc_c': samps2fit_ofc_c, 'str_h': samps2fit_str_h, 'str_c': samps2fit_str_c}
+
+    return dat2fit, psths, nsvec, samps
 
 
 # TODO: currently deprecated, but could be useful for later anlaysis,.

@@ -10,6 +10,14 @@ from dynamics.utils.utils import opsbase
 import gc
 import json
 from datetime import datetime
+# from dynamics.process.rnn import parse
+# import tracemalloc
+# import sys
+# from dynamics.utils import profiler
+# from dynamics.utils.utils import memcheck, compress_save
+# import warnings
+from datetime import datetime
+
 
 
 def savecurric(fname, net, updater, dat, ops, domodel=True, dostats=True, dodat=True,
@@ -35,14 +43,27 @@ def savecurric(fname, net, updater, dat, ops, domodel=True, dostats=True, dodat=
     if domodel:
         torch.save(net.state_dict(), fname + '.model')  # save model
         torch.save(updater.state_dict(), fname + '.adam')  # save model
+        # attributes of models will NOT be saved with torch.save. important ones must be saved separately
+        if hasattr(net,'projection_neurons'):
+            proj_neurons = np.sort(net.projection_neurons).tolist()
+            with open(fname + '_model_attributes.json', 'w') as f:
+                json.dump({'projection_neurons': proj_neurons}, f)
 
     if dostats and not trainonly:
         wt_dict, linreg, numdict, rho_all, ops = wta.parsesimulation(dat, ops)
         if doMAT:
+            # following the true pipeline can leave zero data during training because of only keeping 1.5 std from mean
+            # as well as looking for good data in all blocks. so omit this parse from the quick-and-dirty test
+            # datlist, tokeep = parse.format2sess(dat)
+            # dat_filt = parse.format2singlesess(datlist, tokeep) # for now dont use the preprocessing step. buggy
             wtlist, reg_hist, reg_block = wta.modelagnostic_test(dat, dt=ops['dt'])
             pickle.dump([wt_dict, linreg, numdict, wtlist, reg_hist, reg_block], open(fname + '.stats', 'wb'))
+            # make them into json objects to avoid any further numpy insanity
+            parse.stats2json(fname + '.stats', fname + '_stats.json')
+            # del datlist, dat_filt
         else:
             pickle.dump([wt_dict, linreg, numdict], open(fname + '.stats', 'wb'))
+            parse.stats2json(fname + '.stats', fname + '_stats.json')
         output = [linreg, wt_dict]
 
     if dodat and not trainonly:
@@ -51,10 +72,19 @@ def savecurric(fname, net, updater, dat, ops, domodel=True, dostats=True, dodat=
         with open(fname+'.json', 'w') as f:
             json.dump(dat_json, f)
 
+        # pickle.dump(dat, open(fname + '.dat', 'wb'))  # save data changed 19 october. hoping to retro save as .gz
+        # compress_save(dat, fname + '.dat'+'.gz')
         print('done saving')
 
     if deldat:
+        # memory checks
+        # device = torch.device(ops['device'])
+        # print('collect 1 start:' + str(datetime.now()))
+        # print(memcheck(device, clearmem=True))
         del dat
+
+        # print('collect 1 stopt:' + str(datetime.now()))
+        # print(memcheck(device, clearmem=False))
 
     # garbage collect and clear cuda memory at each save
     gc.collect()
@@ -264,8 +294,10 @@ def training_kindergarten(net, ops=None, savename='rnn_kindergarten', device=tor
     print('task inds for training:')
     print(lossind_list)
 
+    # lossind_list = [[0], [0, 1], [0, 1, 2]]
     ltot_train_list = []
     gradnorm_list = []
+    updater = None
 
     if 'simple' in stages:
         ltot_train_list_simple = []
@@ -287,6 +319,7 @@ def training_kindergarten(net, ops=None, savename='rnn_kindergarten', device=tor
                 seed=seed, nsteps=nsteps_simple, batchsize=batchsize, din=din, ops=ops)
 
             si = net.begin_state(batchsize=batchsize, device=device)
+            # [k.detach() for k in si]  # LSTMs have tuples
             # track the state. do it as list comprehension for LSTMS
             if isinstance(si[0], tuple):  # multiregion LSTM
                 [[m.detach() for m in sk] for sk in si]
@@ -316,6 +349,9 @@ def training_kindergarten(net, ops=None, savename='rnn_kindergarten', device=tor
             savedat_json = parse.dict2json(savedict)
             with open(savename + '_simple.json', 'w') as f:
                 json.dump(savedat_json, f)
+            # pickle.dump([ltot_train_list, gradnorm_list, outptdict], open(savename + '_simple.log', 'wb'))
+
+        # del ltot_train_list, gradnorm_list
 
     # train on intermediate task-------------------------------------
     if 'intermediate' in stages:
@@ -329,6 +365,8 @@ def training_kindergarten(net, ops=None, savename='rnn_kindergarten', device=tor
 
         # change dimensions of trainign data. now timesteps is long, to concatenate trials
         # must have many trials and blocks to learn about structure
+        # lossind_list = [[0, 1, 2, 3]]
+        # lossind_list = [[0, 1, 2]]
         lossind_list = [lossind_global]  # all of the ones at once
         print('task inds for training:')
         print(lossind_list)
@@ -454,12 +492,12 @@ def training_prediction(net, ops, savename='rnn_pred_', device=torch.device('cpu
         stateops = {'vdict': vdict, 'statetrans_fun': statetrans_fun}
 
         inputs, targets, _, _, _, _ = wt_pred.trainingdata_general(ops, seed=seed, ntrials=ntrials_pred,
-                                                                   batchsize=batchsize,
-                                                                   useblocks=True, p_optout=p_optout, stateops=stateops)
+                                                                  batchsize=batchsize,
+                                                                  useblocks=True, p_optout=p_optout, stateops=stateops)
     elif ops['numstates_pred'] == 2:
         vdict = {0: [2, 4, 8], 1: [8, 16, 32]}
         statetrans_fun = wt_pred.transition_2state
-        stateops = {'vdict': vdict, 'statetrans_fun': statetrans_fun}
+        stateops = {'vdict': vdict, 'statetrans_fun':statetrans_fun}
 
         inputs, targets, _, _, _, _ = wt_pred.trainingdata_general(ops, seed=seed, ntrials=ntrials_pred,
                                                                    batchsize=batchsize,
@@ -547,7 +585,7 @@ def training_sham(net, ops, savename='rnn_d2m_', device=torch.device('cpu'), sav
 
     # train, round 1: no opt-outs, no catch, no block
     print('sham training')
-    inputs, targets, _, _, _ = wt_d2m.trainingdata(ops, seed=seed, T=nt, batchsize=batchsize)
+    inputs, targets, _, _,_ = wt_d2m.trainingdata(ops, seed=seed, T=nt, batchsize=batchsize)
     print('done with datagen')
     nsteps = inputs.shape[1]  # total number of training steps
 
@@ -645,6 +683,9 @@ def curriculumtraining(net, ops, savename='curric', device=torch.device('cpu'),
     :return:
     """
 
+    # beginning to clean up curriculum training
+    # tracemalloc.start(5)
+
     # choose cost function(s)
     costfun = wt_costs.name2fun[ops['costtype']]
 
@@ -674,6 +715,9 @@ def curriculumtraining(net, ops, savename='curric', device=torch.device('cpu'),
     for k in range(nrounds_start[0], nrounds[0]):  # train for 1 million, save every 100 k
         print(k)
         print(datetime.now())
+
+        # if ((k + 1) % 10 == 0 or k == 0) and savetmp:
+        #  try saving all data and see how it goes
         ops['trainonly'] = False
 
         returndict_nocatch = wt_reinforce_cont_new.session_torch_cont(ops, net, optimizer, costfun, device)
@@ -683,11 +727,13 @@ def curriculumtraining(net, ops, savename='curric', device=torch.device('cpu'),
                    domodel=True, dostats=True, dodat=True, deldat=True)
 
         # delete again
+        # print(memcheck(device))
         del returndict_nocatch
         gc.collect()
         if ops['device'] == 'cuda':
             print('clearing cuda cache at end of 10k nocatch session')
             torch.cuda.empty_cache()
+        # print(memcheck(device))
 
     # round 2: catch trials
     print('round 2: catch trials')
@@ -699,6 +745,7 @@ def curriculumtraining(net, ops, savename='curric', device=torch.device('cpu'),
         print(k)
         print(datetime.now())
 
+        # if ((k + 1) % 10 == 0 or k == 0) and savetmp:
         ops['trainonly'] = False
 
         returndict_catch = wt_reinforce_cont_new.session_torch_cont(ops, net, optimizer, costfun, device)
@@ -709,12 +756,14 @@ def curriculumtraining(net, ops, savename='curric', device=torch.device('cpu'),
                             domodel=True, dostats=True, dodat=True, deldat=True, doMAT=False)
 
         # delete again
+        # print(memcheck(device))
         del output
         del returndict_catch
         gc.collect()
         if ops['device'] == 'cuda':
             print('clearing cuda cache at end of 10k catch session')
             torch.cuda.empty_cache()
+        # print(memcheck(device))
 
         # early stopping?
         if ops['prog_stop']:
@@ -754,6 +803,8 @@ def curriculumtraining(net, ops, savename='curric', device=torch.device('cpu'),
     for k in range(nrounds_start[2], nrounds[2]):
         print(k)
 
+        # if ((k + 1) % 10 == 0 or k == 0) and savetmp:
+
         ops['trainonly'] = False
         # set annealed
         ops['lambda_policy'] = avec_actor[anneal_ind]
@@ -771,12 +822,14 @@ def curriculumtraining(net, ops, savename='curric', device=torch.device('cpu'),
                             domodel=True, dostats=True, dodat=True, deldat=True, doMAT=True)
 
         # delete again
+        # print(memcheck(device))
         del output
         del returndict_block
         gc.collect()
         if ops['device'] == 'cuda':
             print('clearing cuda cache at end of 10k block session')
             torch.cuda.empty_cache()
+        # print(memcheck(device))
 
         if ((k + 1) % 10 == 0 or k == 0) and savetmp:
             print('freeze round')
@@ -787,11 +840,13 @@ def curriculumtraining(net, ops, savename='curric', device=torch.device('cpu'),
                            domodel=True, dostats=True, dodat=True, deldat=True, doMAT=True)
 
             # delete again
+            # print(memcheck(device))
             del returndict_block_fr
             gc.collect()
             if ops['device'] == 'cuda':
                 print('clearing cuda cache at end of 10k frozen block session')
                 torch.cuda.empty_cache()
+            # print(memcheck(device))
 
         anneal_ind += 1
 
@@ -809,14 +864,13 @@ def curriculumtraining(net, ops, savename='curric', device=torch.device('cpu'),
     return net, optim_fname
 
 
-def sim_task(modelname, configname=None, simtype='task', task_seed=101):
+def sim_task(modelname, configname=None, simtype='task', task_seed = 101):
     """
     will simulate for a given task
     for heavier dynamics processing
     :param modelname: (str) full path to model to use for simulation
     :param configname: (str) path to .cfg file. make sure trainonly=False, trackstate=True for sim task.
     :param simtype: (str) 'task', 'inf','kind' for different types of simulations
-    :param task_seed: (int) seed to rng to set trial offers and such
     :return:
     """
 
@@ -842,6 +896,8 @@ def sim_task(modelname, configname=None, simtype='task', task_seed=101):
         ops, uniqueops = utils.parse_configs(configname)
         numhidden = uniqueops['nn']
 
+    basename = modelname.split('/')[-1].split('.')[0]  # the prefix for saved data
+
     costfun = wt_costs.name2fun[ops['costtype']]
     device = torch.device('cpu')
 
@@ -860,14 +916,18 @@ def sim_task(modelname, configname=None, simtype='task', task_seed=101):
 
     elif simtype == 'kind':
         batchsize = 100
-        nsteps_list = [30]
+        nsteps_list=[30, 20, 10]
+        #nsteps_list = [30]
+        ntrials = len(nsteps_list)
         nsteps = sum(nsteps_list)
         inp, targ, V, rewards = wt_kindergarten.trainingdata_intermediate(seed=101,
                                                                           nsteps_list=nsteps_list,
                                                                           batchsize=batchsize,
                                                                           ops=ops)
         inputs = torch.Tensor(inp).to(device)
+        targets = torch.Tensor(targ).to(device)
         si = net.begin_state(batchsize=batchsize, device=device)
+        device = torch.device('cpu')
 
         outpt_supervised, preds, sflat, tdict = parse.batchsamples_kind_allstate(net, inputs, si)
 
@@ -882,10 +942,12 @@ def sim_task(modelname, configname=None, simtype='task', task_seed=101):
         targ = np.array(targnew)
 
         # create a behdict out of these things!
+        otypes = np.unique(offers)
         behdict = {'tdict': tdict, 'preds': preds, 'blocks': blocks, 'offers': offers, 'targs': targ,
                    'outcomes': 0*np.ones(offers.shape).astype(int)}
 
-        rdict = {'behdict': behdict, 'outpt_supervised': outpt_supervised, 'sflat': sflat, 'inp': inp, 'ops': ops}
+        rdict = {'behdict': behdict, 'outpt_supervised': outpt_supervised, 'sflat': sflat, 'inp': inp, 'ops':ops}
+
 
     elif simtype == 'inf':
         batchsize = 1
@@ -895,7 +957,9 @@ def sim_task(modelname, configname=None, simtype='task', task_seed=101):
         blocks = np.array(np.squeeze(blocks))
 
         inputs = torch.Tensor(inp).to(device)
+        targets = torch.Tensor(targ).to(device)
         si = net.begin_state(batchsize=batchsize, device=device)
+        device = torch.device('cpu')
 
         outpt, outpt2, sflat, tdict = parse.batchsamples_kind_allstate(net, inputs, si)
         inp = np.squeeze(inp)
@@ -904,13 +968,14 @@ def sim_task(modelname, configname=None, simtype='task', task_seed=101):
         preds = np.array([np.squeeze(k[0, 0, :]) for k in outpt2])
 
         # create a behdict out of these things!
+        otypes = np.unique(offers)
         behdict = {'tdict': tdict, 'preds': preds, 'blocks': blocks, 'offers': offers, 'targs': targ,
                    'outcomes': 0*np.ones(offers.shape).astype(int)}
 
-        rdict = {'behdict': behdict, 'outpt_supervised': outpt, 'sflat': sflat, 'inp': inp, 'ops': ops}
+        rdict = {'behdict': behdict, 'outpt_supervised': outpt, 'sflat': sflat, 'inp': inp, 'ops':ops}
+
 
     else:
         print('going to sim other types here. not supported yet')
-        rdict = None
 
     return rdict
